@@ -1,0 +1,157 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  COACH
+  ADMIN
+}
+
+enum ExerciseGroupType {
+  SINGLE
+  SUPERSET_2
+  SUPERSET_3
+}
+
+enum WorkoutSessionStatus {
+  ACTIVE
+  PAUSED
+  FINISHED
+}
+
+model User {
+  id                 String           @id @default(uuid())
+  email              String           @unique
+  password_hash      String
+  full_name          String
+  role               UserRole         @default(USER)
+  refresh_token_hash String?
+  created_exercises  Exercise[]
+  routines           Routine[]
+  workout_sessions   WorkoutSession[]
+  created_at         DateTime         @default(now())
+  updated_at         DateTime         @updatedAt
+}
+
+model Exercise {
+  id             String          @id @default(uuid())
+  name           String          @unique
+  muscle_group   String
+  equipment      String?
+  instructions   String?
+  created_by_id  String?
+  created_by     User?           @relation(fields: [created_by_id], references: [id])
+  group_exercise GroupExercise[]
+  created_at     DateTime        @default(now())
+  updated_at     DateTime        @updatedAt
+}
+
+model Routine {
+  id          String           @id @default(uuid())
+  owner_id    String
+  owner       User             @relation(fields: [owner_id], references: [id])
+  name        String
+  description String?
+  days        RoutineDay[]
+  sessions    WorkoutSession[]
+  created_at  DateTime         @default(now())
+  updated_at  DateTime         @updatedAt
+}
+
+model RoutineDay {
+  id               String           @id @default(uuid())
+  routine_id       String
+  routine          Routine          @relation(fields: [routine_id], references: [id], onDelete: Cascade)
+  day_label        String
+  order_index      Int
+  groups           ExerciseGroup[]
+  workout_sessions WorkoutSession[]
+}
+
+model ExerciseGroup {
+  id                             String            @id @default(uuid())
+  routine_day_id                 String
+  routine_day                    RoutineDay        @relation(fields: [routine_day_id], references: [id], onDelete: Cascade)
+  type                           ExerciseGroupType
+  order_index                    Int
+  rounds_total                   Int
+  rest_between_exercises_seconds Int               @default(0)
+  rest_after_round_seconds       Int               @default(0)
+  rest_after_set_seconds         Int?
+  exercises                      GroupExercise[]
+}
+
+model GroupExercise {
+  id                    String        @id @default(uuid())
+  exercise_group_id     String
+  exercise_group        ExerciseGroup @relation(fields: [exercise_group_id], references: [id], onDelete: Cascade)
+  exercise_id           String
+  exercise              Exercise      @relation(fields: [exercise_id], references: [id])
+  order_in_group        String
+  target_sets_per_round Int
+  rep_range             String
+  notes                 String?
+}
+
+model WorkoutSession {
+  id                                      String               @id @default(uuid())
+  user_id                                 String
+  user                                    User                 @relation(fields: [user_id], references: [id])
+  routine_id                              String
+  routine                                 Routine              @relation(fields: [routine_id], references: [id])
+  routine_day_id                          String
+  routine_day                             RoutineDay           @relation(fields: [routine_day_id], references: [id])
+  status                                  WorkoutSessionStatus @default(ACTIVE)
+  started_at                              DateTime             @default(now())
+  ended_at                                DateTime?
+  current_pointer                         Json?
+  override_rest_between_exercises_seconds Int?
+  override_rest_after_round_seconds       Int?
+  override_rest_after_set_seconds         Int?
+  workout_groups                          WorkoutGroup[]
+}
+
+model WorkoutGroup {
+  id                             String                @id @default(uuid())
+  workout_session_id             String
+  workout_session                WorkoutSession        @relation(fields: [workout_session_id], references: [id], onDelete: Cascade)
+  source_group_id                String
+  type                           ExerciseGroupType
+  order_index                    Int
+  rounds_total                   Int
+  round_current                  Int                   @default(1)
+  rest_between_exercises_seconds Int                   @default(0)
+  rest_after_round_seconds       Int                   @default(0)
+  rest_after_set_seconds         Int?
+  workout_items                  WorkoutExerciseItem[]
+}
+
+model WorkoutExerciseItem {
+  id                       String       @id @default(uuid())
+  workout_group_id         String
+  workout_group            WorkoutGroup @relation(fields: [workout_group_id], references: [id], onDelete: Cascade)
+  source_group_exercise_id String
+  order_in_group           String
+  target_sets_total        Int
+  rep_range                String
+  notes                    String?
+  sets                     WorkoutSet[]
+}
+
+model WorkoutSet {
+  id                       String              @id @default(uuid())
+  workout_exercise_item_id String
+  workout_exercise_item    WorkoutExerciseItem @relation(fields: [workout_exercise_item_id], references: [id], onDelete: Cascade)
+  set_number               Int
+  weight                   Float?
+  reps                     Int?
+  rpe                      Float?
+  completed_at             DateTime?
+  is_done                  Boolean             @default(false)
+}

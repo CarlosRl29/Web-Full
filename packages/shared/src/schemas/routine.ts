@@ -1,0 +1,36 @@
+import { z } from "zod";
+import { ExerciseGroupType } from "../enums";
+
+export const groupExerciseSchema = z.object({
+  exercise_id: z.string().uuid(),
+  order_in_group: z.enum(["A1", "A2", "A3"]),
+  target_sets_per_round: z.number().int().positive(),
+  rep_range: z.string().min(1),
+  notes: z.string().optional()
+});
+
+export const exerciseGroupSchema = z.object({
+  type: z.nativeEnum(ExerciseGroupType),
+  order_index: z.number().int().nonnegative(),
+  rounds_total: z.number().int().positive(),
+  rest_between_exercises_seconds: z.number().int().nonnegative().default(0),
+  rest_after_round_seconds: z.number().int().nonnegative().default(0),
+  rest_after_set_seconds: z.number().int().nonnegative().optional(),
+  exercises: z.array(groupExerciseSchema).min(1).max(3)
+});
+
+export const routineDaySchema = z.object({
+  day_label: z.string().min(1),
+  order_index: z.number().int().nonnegative(),
+  groups: z.array(exerciseGroupSchema).min(1)
+});
+
+export const createRoutineSchema = z.object({
+  name: z.string().min(2),
+  description: z.string().optional(),
+  days: z.array(routineDaySchema).min(1)
+});
+
+export const updateRoutineSchema = createRoutineSchema.partial();
+
+export type CreateRoutineInput = z.infer<typeof createRoutineSchema>;
