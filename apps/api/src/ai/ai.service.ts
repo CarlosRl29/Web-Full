@@ -42,6 +42,14 @@ type ListAppliedParams = {
   day_id?: string;
 };
 
+type ExportLogsParams = {
+  from?: string;
+  to?: string;
+  user_id?: string;
+  coach_id?: string;
+  safety_flag?: string;
+};
+
 @Injectable()
 export class AiService {
   constructor(
@@ -234,6 +242,78 @@ export class AiService {
 
   private isCoachOrAdmin(role: UserRole): boolean {
     return role === UserRole.COACH || role === UserRole.ADMIN;
+  }
+
+  private parseDateRange(input: { from?: string; to?: string }, defaultDays: number): {
+    from: Date;
+    to: Date;
+  } {
+    const now = new Date();
+    const to = input.to ? new Date(input.to) : now;
+    const from = input.from
+      ? new Date(input.from)
+      : new Date(now.getTime() - defaultDays * 24 * 60 * 60 * 1000);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+      throw new HttpException({ message: "Invalid date range" }, HttpStatus.BAD_REQUEST);
+    }
+    if (to.getTime() < from.getTime()) {
+      throw new HttpException({ message: "Invalid range: to < from" }, HttpStatus.BAD_REQUEST);
+    }
+    const rangeDays = (to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000);
+    if (rangeDays > 90) {
+      throw new HttpException({ message: "Range too large (max 90 days)" }, HttpStatus.BAD_REQUEST);
+    }
+    return { from, to };
+  }
+
+  private summarizePayload(payload: unknown): string {
+    if (!payload || typeof payload !== "object") {
+      return "";
+    }
+    const value = payload as Record<string, unknown>;
+    const summaryParts: string[] = [];
+    if (typeof value.recommendation_summary === "string") {
+      summaryParts.push(value.recommendation_summary.slice(0, 160));
+    }
+    if (Array.isArray(value.safety_flags) && value.safety_flags.length > 0) {
+      summaryParts.push(`flags:${value.safety_flags.join("|")}`);
+    }
+    if (typeof value.message === "string") {
+      summaryParts.push(value.message.slice(0, 120));
+    }
+    return summaryParts.join(" • ");
+  }
+
+  private escapeCsv(value: unknown): string {
+    if (value == null) {
+      return "";
+    }
+    const text = String(value);
+    if (text.includes(",") || text.includes("\"") || text.includes("\n")) {
+      return `"${text.replace(/"/g, "\"\"")}"`;
+    }
+    return text;
+  }
+
+  private async getCoachScope(actor: AuthUser): Promise<{
+    userIds: string[];
+    routineIds: string[];
+  }> {
+    const [assignments, ownedRoutines] = await Promise.all([
+      this.prisma.routineAssignment.findMany({
+        where: { coach_id: actor.sub, is_active: true },
+        select: { user_id: true },
+        distinct: ["user_id"]
+      }),
+      this.prisma.routine.findMany({
+        where: { owner_id: actor.sub },
+        select: { id: true }
+      })
+    ]);
+    return {
+      userIds: assignments.map((row) => row.user_id),
+      routineIds: ownedRoutines.map((row) => row.id)
+    };
   }
 
   private async assertCanAccessRoutineForTrace(
@@ -745,5 +825,249 @@ export class AiService {
       rate_limited: rateLimited,
       dedup_savings_pct
     };
+  }
+
+  async exportLogsCsv(actor: AuthUser, params: ExportLogsParams): Promise<string> {
+    if (!this.isCoachOrAdmin(actor.role)) {
+      throw new ForbiddenException("Only coach/admin can export AI logs");
+    }
+
+    const { from, to } = this.parseDateRange({ from: params.from, to: params.to }, 7);
+    let whereClause: Record<string, unknown> = {
+      created_at: { gte: from, lte: to }
+    };
+
+    if (params.user_id) {
+      whereClause = { ...whereClause, user_id: params.user_id };
+    }
+    if (params.safety_flag) {
+      whereClause = { ...whereClause, safety_flags: { has: params.safety_flag } };
+    }
+    if (params.coach_id) {
+      whereClause = { ...whereClause, coach_id: params.coach_id };
+    }
+
+    if (actor.role === UserRole.COACH) {
+      const scope = await this.getCoachScope(actor);
+      if (scope.userIds.length === 0 && scope.routineIds.length === 0) {
+        return "created_at,user_id,coach_id,strategy_version,model_version,dedup_hit,rate_limited,latency_ms,safety_flags,routine_id,routine_day_id,applied_by_user_id,request_summary,response_summary\n";
+      }
+      whereClause = {
+        ...whereClause,
+        OR: [
+          ...(scope.userIds.length > 0 ? [{ user_id: { in: scope.userIds } }] : []),
+          ...(scope.routineIds.length > 0
+            ? [{ applied_suggestions: { some: { routine_id: { in: scope.routineIds } } } }]
+            : [])
+        ]
+      };
+    }
+
+    const rows = await this.prisma.aiRecommendationLog.findMany({
+      where: whereClause as never,
+      include: {
+        applied_suggestions: {
+          select: {
+            routine_id: true,
+            routine_day_id: true,
+            applied_by_user_id: true
+          }
+        }
+      },
+      orderBy: { created_at: "desc" }
+    });
+
+    const header = [
+      "created_at",
+      "user_id",
+      "coach_id",
+      "strategy_version",
+      "model_version",
+      "dedup_hit",
+      "rate_limited",
+      "latency_ms",
+      "safety_flags",
+      "routine_id",
+      "routine_day_id",
+      "applied_by_user_id",
+      "request_summary",
+      "response_summary"
+    ].join(",");
+
+    const lines: string[] = [header];
+    for (const row of rows) {
+      const sanitizedRequest = this.sanitizePayload(row.request_payload);
+      const sanitizedResponse = this.sanitizePayload(row.response_payload);
+      const base = [
+        this.escapeCsv(row.created_at.toISOString()),
+        this.escapeCsv(row.user_id),
+        this.escapeCsv(row.coach_id ?? ""),
+        this.escapeCsv(row.strategy_version),
+        this.escapeCsv(row.model_version),
+        this.escapeCsv(row.dedup_hit),
+        this.escapeCsv(row.rate_limited),
+        this.escapeCsv(row.latency_ms ?? ""),
+        this.escapeCsv((row.safety_flags ?? []).join("|"))
+      ];
+
+      if (row.applied_suggestions.length === 0) {
+        lines.push(
+          [
+            ...base,
+            "",
+            "",
+            "",
+            this.escapeCsv(this.summarizePayload(sanitizedRequest)),
+            this.escapeCsv(this.summarizePayload(sanitizedResponse))
+          ].join(",")
+        );
+        continue;
+      }
+
+      for (const applied of row.applied_suggestions) {
+        lines.push(
+          [
+            ...base,
+            this.escapeCsv(applied.routine_id),
+            this.escapeCsv(applied.routine_day_id),
+            this.escapeCsv(applied.applied_by_user_id),
+            this.escapeCsv(this.summarizePayload(sanitizedRequest)),
+            this.escapeCsv(this.summarizePayload(sanitizedResponse))
+          ].join(",")
+        );
+      }
+    }
+    return `${lines.join("\n")}\n`;
+  }
+
+  async getAlerts(actor: AuthUser, windowHours: number) {
+    if (!this.isCoachOrAdmin(actor.role)) {
+      throw new ForbiddenException("Only coach/admin can read AI alerts");
+    }
+    const boundedHours = Math.min(Math.max(windowHours, 1), 168);
+    const windowStart = new Date(Date.now() - boundedHours * 60 * 60 * 1000);
+    const prevWindowStart = new Date(Date.now() - boundedHours * 2 * 60 * 60 * 1000);
+
+    let whereCurrent: Record<string, unknown> = { created_at: { gte: windowStart } };
+    let wherePrev: Record<string, unknown> = {
+      created_at: { gte: prevWindowStart, lt: windowStart }
+    };
+
+    if (actor.role === UserRole.COACH) {
+      const scope = await this.getCoachScope(actor);
+      if (scope.userIds.length === 0 && scope.routineIds.length === 0) {
+        return [];
+      }
+      const scopeOr = [
+        ...(scope.userIds.length > 0 ? [{ user_id: { in: scope.userIds } }] : []),
+        ...(scope.routineIds.length > 0
+          ? [{ applied_suggestions: { some: { routine_id: { in: scope.routineIds } } } }]
+          : [])
+      ];
+      whereCurrent = { ...whereCurrent, OR: scopeOr };
+      wherePrev = { ...wherePrev, OR: scopeOr };
+    }
+
+    const currentWhere = whereCurrent as Record<string, unknown>;
+    const prevWhere = wherePrev as Record<string, unknown>;
+
+    const [total, rateLimited, safetyCritical, dedupHits, prevTotal, prevDedup] = await Promise.all([
+      this.prisma.aiRecommendationLog.count({ where: currentWhere as never }),
+      this.prisma.aiRecommendationLog.count({
+        where: { ...currentWhere, rate_limited: true } as never
+      }),
+      this.prisma.aiRecommendationLog.count({
+        where: {
+          ...currentWhere,
+          OR: [
+            { safety_flags: { has: "acute_pain_guardrail" } },
+            { safety_flags: { has: "medical_language_blocked" } }
+          ]
+        } as never
+      }),
+      this.prisma.aiRecommendationLog.count({
+        where: { ...currentWhere, dedup_hit: true } as never
+      }),
+      this.prisma.aiRecommendationLog.count({ where: prevWhere as never }),
+      this.prisma.aiRecommendationLog.count({
+        where: { ...prevWhere, dedup_hit: true } as never
+      })
+    ]);
+
+    const alerts: Array<{
+      id: string;
+      severity: "low" | "medium" | "high";
+      title: string;
+      description: string;
+      metrics: Record<string, number>;
+      window_hours: number;
+    }> = [];
+
+    const ratePct = total === 0 ? 0 : rateLimited / total;
+    if (rateLimited >= 5 || ratePct >= 0.2) {
+      alerts.push({
+        id: "rate-limited-spike",
+        severity: ratePct >= 0.35 ? "high" : "medium",
+        title: "Rate limited spike",
+        description: "High share of AI requests are being rate limited.",
+        metrics: { total, rate_limited: rateLimited, rate_limited_pct: Number((ratePct * 100).toFixed(2)) },
+        window_hours: boundedHours
+      });
+    }
+
+    const safetyPct = total === 0 ? 0 : safetyCritical / total;
+    if (safetyCritical >= 3 || safetyPct >= 0.25) {
+      alerts.push({
+        id: "safety-flag-spike",
+        severity: safetyPct >= 0.4 ? "high" : "medium",
+        title: "Safety flags critical spike",
+        description: "Critical safety guardrails are triggering above normal thresholds.",
+        metrics: { total, safety_critical: safetyCritical, safety_critical_pct: Number((safetyPct * 100).toFixed(2)) },
+        window_hours: boundedHours
+      });
+    }
+
+    const errorSpike = rateLimited;
+    if (errorSpike >= 5) {
+      alerts.push({
+        id: "error-spike",
+        severity: errorSpike >= 10 ? "high" : "medium",
+        title: "AI error spike",
+        description: "Operational errors increased (approximated by rate-limited events).",
+        metrics: { error_events: errorSpike },
+        window_hours: boundedHours
+      });
+    }
+
+    const currentDedupPct = total === 0 ? 0 : dedupHits / total;
+    const prevDedupPct = prevTotal === 0 ? currentDedupPct : prevDedup / prevTotal;
+    const drop = prevDedupPct - currentDedupPct;
+    if (drop >= 0.15) {
+      alerts.push({
+        id: "dedup-savings-drop",
+        severity: drop >= 0.3 ? "high" : "medium",
+        title: "Dedup savings drop",
+        description: "Dedup cache effectiveness dropped versus baseline window.",
+        metrics: {
+          current_dedup_savings_pct: Number((currentDedupPct * 100).toFixed(2)),
+          baseline_dedup_savings_pct: Number((prevDedupPct * 100).toFixed(2)),
+          drop_pct_points: Number((drop * 100).toFixed(2))
+        },
+        window_hours: boundedHours
+      });
+    }
+
+    if (alerts.length === 0) {
+      alerts.push({
+        id: "no-alerts",
+        severity: "low",
+        title: "No critical alerts",
+        description: "AI operations are within expected thresholds.",
+        metrics: { total, rate_limited: rateLimited, dedup_hits: dedupHits },
+        window_hours: boundedHours
+      });
+    }
+
+    return alerts;
   }
 }

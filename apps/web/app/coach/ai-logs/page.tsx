@@ -74,6 +74,36 @@ export default function CoachAiLogsPage() {
     return params;
   }, [userId, safetyFlag, fromDate, toDate]);
 
+  const exportCsv = async () => {
+    if (!token) {
+      return;
+    }
+    try {
+      const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
+      const params = new URLSearchParams(queryBase.toString());
+      const response = await fetch(`${base}/ai/logs/export.csv?${params.toString()}`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error?.message ?? "No se pudo exportar CSV");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `ai_audit_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "No se pudo exportar CSV");
+    }
+  };
+
   const loadLogs = async (cursor?: string, append = false) => {
     if (!token) {
       return;
@@ -133,6 +163,9 @@ export default function CoachAiLogsPage() {
         <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
         <button onClick={() => void loadLogs(undefined, false)} disabled={loadingLogs}>
           Filtrar
+        </button>
+        <button onClick={() => void exportCsv()} disabled={loadingLogs}>
+          Exportar CSV
         </button>
       </div>
 

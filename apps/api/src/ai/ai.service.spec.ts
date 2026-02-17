@@ -52,6 +52,12 @@ describe("AiService", () => {
           if (where?.user_id?.in) {
             filtered = filtered.filter((item) => where.user_id.in.includes(item.user_id));
           }
+          if (where?.user_id && typeof where.user_id === "string") {
+            filtered = filtered.filter((item) => item.user_id === where.user_id);
+          }
+          if (where?.coach_id && typeof where.coach_id === "string") {
+            filtered = filtered.filter((item) => item.coach_id === where.coach_id);
+          }
           if (where?.safety_flags?.has) {
             filtered = filtered.filter((item) =>
               (item.safety_flags ?? []).includes(where.safety_flags.has)
@@ -66,23 +72,31 @@ describe("AiService", () => {
             filtered = filtered.filter((item) => new Date(item.created_at).getTime() <= toTs);
           }
           if (where?.OR) {
-            const [a, b] = where.OR;
-            filtered = filtered.filter((item) => {
-              const created = new Date(item.created_at).getTime();
-              const aTs = new Date(a.created_at.lt).getTime();
-              if (created < aTs) {
-                return true;
-              }
-              if (
-                b?.created_at &&
-                new Date(item.created_at).getTime() ===
-                  new Date(b.created_at).getTime() &&
-                item.id < b.id.lt
-              ) {
-                return true;
-              }
-              return false;
-            });
+            filtered = filtered.filter((item) =>
+              where.OR.some((condition: any) => {
+                if (condition.created_at?.lt) {
+                  const created = new Date(item.created_at).getTime();
+                  const aTs = new Date(condition.created_at.lt).getTime();
+                  return created < aTs;
+                }
+                if (condition.created_at && condition.id?.lt) {
+                  return (
+                    new Date(item.created_at).getTime() ===
+                      new Date(condition.created_at).getTime() && item.id < condition.id.lt
+                  );
+                }
+                if (condition.user_id?.in) {
+                  return condition.user_id.in.includes(item.user_id);
+                }
+                if (condition.applied_suggestions?.some?.routine_id?.in) {
+                  const ids: string[] = condition.applied_suggestions.some.routine_id.in;
+                  return (item.applied_suggestions ?? []).some((a: any) =>
+                    ids.includes(a.routine_id)
+                  );
+                }
+                return false;
+              })
+            );
           }
           filtered.sort((l, r) => {
             const diff = new Date(r.created_at).getTime() - new Date(l.created_at).getTime();
@@ -91,7 +105,11 @@ describe("AiService", () => {
             }
             return r.id.localeCompare(l.id);
           });
-          return filtered.slice(0, take ?? filtered.length);
+          const mapped = filtered.map((item) => ({
+            ...item,
+            applied_suggestions: item.applied_suggestions ?? []
+          }));
+          return mapped.slice(0, take ?? mapped.length);
         }),
         count: jest.fn().mockImplementation(async ({ where }: any) => {
           let filtered = [...logs];
@@ -218,6 +236,9 @@ describe("AiService", () => {
       routine: {
         findUnique: jest.fn().mockImplementation(async ({ where }: any) =>
           routines.find((item) => item.id === where.id) ?? null
+        ),
+        findMany: jest.fn().mockImplementation(async ({ where }: any) =>
+          routines.filter((item) => item.owner_id === where.owner_id).map((item) => ({ id: item.id }))
         )
       },
       routineDay: {
@@ -640,5 +661,70 @@ describe("AiService", () => {
     expect(metrics.dedup_hits).toBe(2);
     expect(metrics.rate_limited).toBe(1);
     expect(metrics.dedup_savings_pct).toBe(50);
+  });
+
+  it("coach cannot export logs outside scope", async () => {
+    const { service } = buildService({
+      logs: [
+        {
+          id: "l1",
+          user_id: "user-2",
+          coach_id: "coach-2",
+          created_at: new Date(),
+          strategy_version: "3.3.0",
+          model_version: "m",
+          dedup_hit: false,
+          rate_limited: false,
+          latency_ms: 12,
+          safety_flags: ["acute_pain_guardrail"],
+          request_payload: {},
+          response_payload: {},
+          applied_suggestions: []
+        }
+      ],
+      assignments: [{ coach_id: "coach-1", user_id: "user-1", is_active: true } as any],
+      routines: [{ id: "routine-1", owner_id: "coach-1" }]
+    });
+
+    const csv = await service.exportLogsCsv(actorCoach, {});
+    const lines = csv.trim().split("\n");
+    expect(lines).toHaveLength(1);
+  });
+
+  it("csv export returns header and rows", async () => {
+    const { service } = buildService({
+      logs: [
+        {
+          id: "l1",
+          user_id: "user-1",
+          coach_id: "coach-1",
+          created_at: new Date("2026-02-17T10:00:00.000Z"),
+          strategy_version: "3.3.0",
+          model_version: "m",
+          dedup_hit: true,
+          rate_limited: false,
+          latency_ms: 20,
+          safety_flags: ["acute_pain_guardrail"],
+          request_payload: { context: { window_days: 28 } },
+          response_payload: { recommendation_summary: "ok", safety_flags: ["acute_pain_guardrail"] },
+          applied_suggestions: [
+            {
+              routine_id: "routine-1",
+              routine_day_id: "day-1",
+              applied_by_user_id: "coach-1"
+            }
+          ]
+        }
+      ]
+    });
+
+    const csv = await service.exportLogsCsv(actorAdmin, {
+      from: "2026-02-16T00:00:00.000Z",
+      to: "2026-02-18T00:00:00.000Z"
+    });
+    const lines = csv.trim().split("\n");
+    expect(lines[0]).toContain("created_at,user_id,coach_id");
+    expect(lines.length).toBeGreaterThan(1);
+    expect(lines[1]).toContain("routine-1");
   });
 });

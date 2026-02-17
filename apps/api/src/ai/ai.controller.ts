@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Post, Query, UsePipes } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, Res, UsePipes } from "@nestjs/common";
+import { Response } from "express";
 import {
   aiAppliedSuggestionSchema,
   aiRecommendationRequestSchema
@@ -60,6 +61,30 @@ export class AiController {
     });
   }
 
+  @Get("logs/export.csv")
+  @Roles(UserRole.COACH, UserRole.ADMIN)
+  async exportLogsCsv(
+    @CurrentUser() user: AuthUser,
+    @Query("from") from: string | undefined,
+    @Query("to") to: string | undefined,
+    @Query("user_id") userId: string | undefined,
+    @Query("coach_id") coachId: string | undefined,
+    @Query("safety_flag") safetyFlag: string | undefined,
+    @Res() res: Response
+  ) {
+    const csv = await this.aiService.exportLogsCsv(user, {
+      from,
+      to,
+      user_id: userId,
+      coach_id: coachId,
+      safety_flag: safetyFlag
+    });
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename=\"ai_audit_${stamp}.csv\"`);
+    res.status(200).send(csv);
+  }
+
   @Get("logs/:id")
   getLogById(@CurrentUser() user: AuthUser, @Param("id") id: string) {
     return this.aiService.getLogById(user, id);
@@ -69,5 +94,11 @@ export class AiController {
   @Roles(UserRole.COACH, UserRole.ADMIN)
   getMetrics(@CurrentUser() user: AuthUser, @Query("days") days?: string) {
     return this.aiService.getMetrics(user, days ? Number(days) : 7);
+  }
+
+  @Get("alerts")
+  @Roles(UserRole.COACH, UserRole.ADMIN)
+  getAlerts(@CurrentUser() user: AuthUser, @Query("window_hours") windowHours?: string) {
+    return this.aiService.getAlerts(user, windowHours ? Number(windowHours) : 24);
   }
 }
