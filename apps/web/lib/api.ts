@@ -24,7 +24,7 @@ export async function apiRequest<T>(
 
   const payload = await response.json();
   if (!response.ok || !payload?.success) {
-    throw new Error(payload?.message ?? "API request failed");
+    throw new Error(payload?.error?.message ?? payload?.message ?? "API request failed");
   }
   return payload.data as T;
 }

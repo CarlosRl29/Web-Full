@@ -18,6 +18,7 @@ export function CoachNav() {
       <nav style={{ display: "flex", gap: 12 }}>
         <Link href="/coach/routines">Rutinas</Link>
         <Link href="/coach/assignments">Asignaciones</Link>
+        <Link href="/coach/ai-logs">AI Logs</Link>
       </nav>
       <button
         onClick={() => {
