@@ -26,6 +26,14 @@ export default function CoachRoutinesPage() {
   const [message, setMessage] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiData, setAiData] = useState<AiRecommendationResponse | null>(null);
+  const [pendingApplied, setPendingApplied] = useState<Array<{ ai_log_id: string; applied_changes: Record<string, unknown> }>>([]);
+  const [appliedTrace, setAppliedTrace] = useState<Array<{
+    id: string;
+    ai_log_id: string;
+    created_at: string;
+    routine_id: string;
+    routine_day_id: string;
+  }>>([]);
 
   const loadData = async (accessToken: string) => {
     const [routineData, exerciseData] = await Promise.all([
@@ -42,6 +50,49 @@ export default function CoachRoutinesPage() {
     }
     void loadData(token);
   }, [token]);
+
+  const fetchAppliedTrace = async (accessToken: string, routineId?: string, dayId?: string) => {
+    if (!routineId || !dayId) {
+      setAppliedTrace([]);
+      return;
+    }
+    const params = new URLSearchParams({
+      routine_id: routineId,
+      day_id: dayId
+    });
+    const rows = await apiRequest<any[]>(`/ai/applied?${params.toString()}`, {}, accessToken);
+    setAppliedTrace(
+      rows.map((row) => ({
+        id: row.id,
+        ai_log_id: row.ai_log_id,
+        created_at: row.created_at,
+        routine_id: row.routine_id,
+        routine_day_id: row.routine_day_id
+      }))
+    );
+  };
+
+  const persistAppliedChange = async (
+    accessToken: string,
+    aiLogId: string,
+    routineId: string,
+    routineDayId: string,
+    appliedChanges: Record<string, unknown>
+  ) => {
+    await apiRequest(
+      "/ai/applied",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ai_log_id: aiLogId,
+          routine_id: routineId,
+          routine_day_id: routineDayId,
+          applied_changes: appliedChanges
+        })
+      },
+      accessToken
+    );
+  };
 
   const saveRoutine = async () => {
     if (!token) {
@@ -76,21 +127,41 @@ export default function CoachRoutinesPage() {
     };
 
     try {
+      let savedRoutine: any;
       if (draft.id) {
-        await apiRequest(`/routines/${draft.id}`, {
+        savedRoutine = await apiRequest(`/routines/${draft.id}`, {
           method: "PATCH",
           body: JSON.stringify(payload)
         }, token);
         setMessage("Rutina actualizada.");
       } else {
-        await apiRequest("/routines", {
+        savedRoutine = await apiRequest("/routines", {
           method: "POST",
           body: JSON.stringify(payload)
         }, token);
         setMessage("Rutina creada.");
       }
       await loadData(token);
-      setDraft(createEmptyRoutine());
+      hydrateDraftFromRoutine(savedRoutine);
+
+      if (pendingApplied.length > 0) {
+        const dayId = savedRoutine.days?.[0]?.id;
+        if (savedRoutine.id && dayId) {
+          for (const pending of pendingApplied) {
+            await persistAppliedChange(
+              token,
+              pending.ai_log_id,
+              savedRoutine.id,
+              dayId,
+              pending.applied_changes
+            );
+          }
+          setPendingApplied([]);
+          await fetchAppliedTrace(token, savedRoutine.id, dayId);
+        }
+      } else {
+        await fetchAppliedTrace(token, savedRoutine.id, savedRoutine.days?.[0]?.id);
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "No se pudo guardar rutina");
     }
@@ -257,6 +328,37 @@ export default function CoachRoutinesPage() {
       ...draft,
       groups: nextGroups
     });
+    const appliedChange = {
+      suggestion_id: suggestion.id,
+      title: suggestion.title,
+      set_delta: suggestion.set_delta,
+      rep_min_delta: suggestion.rep_min_delta,
+      rep_max_delta: suggestion.rep_max_delta,
+      rest_after_set_seconds: suggestion.rest_after_set_seconds ?? null,
+      rest_between_exercises_seconds: suggestion.rest_between_exercises_seconds ?? null,
+      swap_order_in_group: suggestion.swap_order_in_group ?? null,
+      swap_strategy: suggestion.swap_strategy
+    } as Record<string, unknown>;
+
+    if (token && aiData?.ai_log_id && draft.id && draft.day_id) {
+      const aiLogId = aiData.ai_log_id;
+      const routineId = draft.id;
+      const routineDayId = draft.day_id;
+      void (async () => {
+        try {
+          await persistAppliedChange(token, aiLogId, routineId, routineDayId, appliedChange);
+          await fetchAppliedTrace(token, routineId, routineDayId);
+        } catch (error) {
+          setMessage(error instanceof Error ? error.message : "No se pudo registrar AI aplicada");
+        }
+      })();
+    } else if (aiData?.ai_log_id) {
+      setPendingApplied((prev) => [
+        ...prev,
+        { ai_log_id: aiData.ai_log_id, applied_changes: appliedChange }
+      ]);
+    }
+
     setMessage(`Sugerencia aplicada: ${suggestion.title}. Revisa y guarda cuando quieras.`);
   };
 
@@ -267,6 +369,7 @@ export default function CoachRoutinesPage() {
     }
     setDraft({
       id: routine.id,
+      day_id: day.id,
       name: routine.name,
       description: routine.description ?? "",
       day_label: day.day_label,
@@ -286,6 +389,9 @@ export default function CoachRoutinesPage() {
         }))
       }))
     });
+    if (token) {
+      void fetchAppliedTrace(token, routine.id, day.id);
+    }
   };
 
   if (loading) {
@@ -312,6 +418,17 @@ export default function CoachRoutinesPage() {
         onChange={setDraft}
         onSave={() => void saveRoutine()}
       />
+      {appliedTrace.length > 0 ? (
+        <section style={{ marginTop: 10, border: "1px solid #d1d5db", padding: 12 }}>
+          <strong>AI aplicada</strong>
+          {appliedTrace.slice(0, 3).map((item) => (
+            <p key={item.id} style={{ margin: "6px 0" }}>
+              {new Date(item.created_at).toLocaleString()} •{" "}
+              <a href={`/coach/ai-logs?log_id=${item.ai_log_id}`}>ver log</a>
+            </p>
+          ))}
+        </section>
+      ) : null}
 
       <section style={{ marginTop: 20, border: "1px solid #ddd", padding: 16 }}>
         <h2>AI Sugerencias</h2>

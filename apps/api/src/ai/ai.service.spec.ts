@@ -15,9 +15,15 @@ describe("AiService", () => {
   function buildService(overrides?: {
     logs?: any[];
     assignments?: Array<{ coach_id: string; user_id: string; is_active: boolean }>;
+    routines?: Array<{ id: string; owner_id: string }>;
+    days?: Array<{ id: string; routine_id: string }>;
+    applied?: any[];
   }) {
     const logs = overrides?.logs ?? [];
     const assignments = overrides?.assignments ?? [];
+    const routines = overrides?.routines ?? [{ id: "routine-1", owner_id: "coach-1" }];
+    const days = overrides?.days ?? [{ id: "day-1", routine_id: "routine-1" }];
+    const applied = overrides?.applied ?? [];
     const analyticsService = {
       getTrainingSummary: jest.fn().mockResolvedValue({
         window_days: 28,
@@ -92,6 +98,17 @@ describe("AiService", () => {
           if (where?.user_id) {
             filtered = filtered.filter((item) => item.user_id === where.user_id);
           }
+          if (where?.coach_id) {
+            filtered = filtered.filter((item) => item.coach_id === where.coach_id);
+          }
+          if (typeof where?.dedup_hit === "boolean") {
+            filtered = filtered.filter((item) => Boolean(item.dedup_hit) === where.dedup_hit);
+          }
+          if (typeof where?.rate_limited === "boolean") {
+            filtered = filtered.filter(
+              (item) => Boolean(item.rate_limited) === where.rate_limited
+            );
+          }
           if (where?.created_at?.gte) {
             const fromTs = new Date(where.created_at.gte).getTime();
             filtered = filtered.filter((item) => new Date(item.created_at).getTime() >= fromTs);
@@ -106,6 +123,11 @@ describe("AiService", () => {
           if (where?.request_hash) {
             filtered = filtered.filter((item) => item.request_hash === where.request_hash);
           }
+          if (typeof where?.rate_limited === "boolean") {
+            filtered = filtered.filter(
+              (item) => Boolean(item.rate_limited) === where.rate_limited
+            );
+          }
           if (where?.created_at?.gte) {
             const gte = new Date(where.created_at.gte).getTime();
             filtered = filtered.filter((item) => new Date(item.created_at).getTime() >= gte);
@@ -117,25 +139,90 @@ describe("AiService", () => {
           }
           return filtered[0] ?? null;
         }),
-        findUnique: jest.fn().mockImplementation(async ({ where }: any) =>
-          logs.find((item) => item.id === where.id) ?? null
-        )
+        findUnique: jest.fn().mockImplementation(async ({ where, include }: any) => {
+          const row = logs.find((item) => item.id === where.id) ?? null;
+          if (!row) {
+            return null;
+          }
+          if (include?.applied_suggestions) {
+            return {
+              ...row,
+              applied_suggestions: applied
+                .filter((item) => item.ai_log_id === row.id)
+                .map((item) => ({
+                  id: item.id,
+                  routine_id: item.routine_id,
+                  routine_day_id: item.routine_day_id,
+                  applied_by_user_id: item.applied_by_user_id,
+                  created_at: item.created_at
+                }))
+            };
+          }
+          return row;
+        })
+      },
+      aiAppliedSuggestion: {
+        create: jest.fn().mockImplementation(async ({ data }: any) => {
+          const created = {
+            id: `applied-${applied.length + 1}`,
+            created_at: new Date(),
+            ...data
+          };
+          applied.push(created);
+          return created;
+        }),
+        findMany: jest.fn().mockImplementation(async ({ where }: any) => {
+          let filtered = [...applied];
+          if (where?.routine_id) {
+            filtered = filtered.filter((item) => item.routine_id === where.routine_id);
+          }
+          if (where?.routine_day_id) {
+            filtered = filtered.filter((item) => item.routine_day_id === where.routine_day_id);
+          }
+          return filtered.map((item) => ({
+            ...item,
+            ai_log: logs.find((l) => l.id === item.ai_log_id)
+              ? {
+                  id: item.ai_log_id,
+                  created_at: logs.find((l) => l.id === item.ai_log_id).created_at,
+                  model_version: logs.find((l) => l.id === item.ai_log_id).model_version,
+                  strategy_version: logs.find((l) => l.id === item.ai_log_id).strategy_version
+                }
+              : null
+          }));
+        })
       },
       routineAssignment: {
         findFirst: jest.fn().mockImplementation(async ({ where }: any) =>
           assignments.find(
             (item) =>
               item.coach_id === where.coach_id &&
-              item.user_id === where.user_id &&
-              item.is_active === where.is_active
+              item.is_active === where.is_active &&
+              (where.user_id ? item.user_id === where.user_id : true) &&
+              (where.routine_id ? (item as any).routine_id === where.routine_id : true)
           ) ?? null
         ),
         findMany: jest.fn().mockImplementation(async ({ where }: any) =>
           assignments
             .filter(
-              (item) => item.coach_id === where.coach_id && item.is_active === where.is_active
+              (item) =>
+                item.coach_id === where.coach_id &&
+                item.is_active === where.is_active &&
+                ((item as any).routine_id
+                  ? (where.routine_id ? (item as any).routine_id === where.routine_id : true)
+                  : true)
             )
-            .map((item) => ({ user_id: item.user_id }))
+            .map((item) => ({ user_id: item.user_id, routine_id: (item as any).routine_id }))
+        )
+      },
+      routine: {
+        findUnique: jest.fn().mockImplementation(async ({ where }: any) =>
+          routines.find((item) => item.id === where.id) ?? null
+        )
+      },
+      routineDay: {
+        findUnique: jest.fn().mockImplementation(async ({ where }: any) =>
+          days.find((item) => item.id === where.id) ?? null
         )
       }
     } as any;
@@ -191,6 +278,7 @@ describe("AiService", () => {
     expect(response.model_version).toBeTruthy();
     expect(response.strategy_version).toBe("3.3.0");
     expect(response.dedup_hit).toBe(false);
+    expect(response.ai_log_id).toBeTruthy();
     expect(response.plan_suggestions.length).toBeGreaterThan(0);
     delete process.env.AI_ENABLED;
   });
@@ -329,7 +417,7 @@ describe("AiService", () => {
       )
     ).rejects.toBeInstanceOf(HttpException);
 
-    expect(prisma.aiRecommendationLog.create).not.toHaveBeenCalled();
+    expect(prisma.aiRecommendationLog.create).toHaveBeenCalledTimes(2);
     delete process.env.AI_ENABLED;
     delete process.env.AI_RATE_LIMIT_PER_DAY;
   });
@@ -339,8 +427,10 @@ describe("AiService", () => {
     process.env.AI_RATE_LIMIT_PER_DAY = "10";
     process.env.AI_DEDUP_WINDOW_HOURS = "6";
     const cachedResponse = {
+      ai_log_id: "log-cached",
       model_version: "cache-model",
       strategy_version: "3.3.0",
+      dedup_hit: false,
       safe_mode: false,
       safety_flags: [],
       rationale: ["cached"],
@@ -391,7 +481,7 @@ describe("AiService", () => {
 
     expect(response.recommendation_summary).toBe("cached result");
     expect(response.dedup_hit).toBe(true);
-    expect(prisma.aiRecommendationLog.create).not.toHaveBeenCalled();
+    expect(prisma.aiRecommendationLog.create).toHaveBeenCalledTimes(1);
 
     (service as any).buildRequestHash = originalHashFn;
     delete process.env.AI_ENABLED;
@@ -419,7 +509,7 @@ describe("AiService", () => {
 
     expect(first.dedup_hit).toBe(false);
     expect(second.dedup_hit).toBe(true);
-    expect(prisma.aiRecommendationLog.create).toHaveBeenCalledTimes(1);
+    expect(prisma.aiRecommendationLog.create).toHaveBeenCalledTimes(2);
 
     delete process.env.AI_ENABLED;
     delete process.env.AI_RATE_LIMIT_PER_DAY;
@@ -451,5 +541,104 @@ describe("AiService", () => {
     delete process.env.AI_ENABLED;
     delete process.env.AI_RATE_LIMIT_PER_DAY;
     delete process.env.AI_DEDUP_WINDOW_HOURS;
+  });
+
+  it("creates AiAppliedSuggestion for coach/admin", async () => {
+    const { service, prisma } = buildService({
+      logs: [
+        {
+          id: "log-1",
+          user_id: "user-1",
+          coach_id: "coach-1",
+          created_at: new Date(),
+          safety_flags: [],
+          model_version: "m",
+          strategy_version: "3.3.0"
+        }
+      ],
+      assignments: [
+        { coach_id: "coach-1", user_id: "user-1", is_active: true, routine_id: "routine-1" } as any
+      ]
+    });
+
+    const created = await service.createAppliedSuggestion(actorCoach, {
+      ai_log_id: "log-1",
+      routine_id: "routine-1",
+      routine_day_id: "day-1",
+      applied_changes: { set_delta: 1 }
+    });
+
+    expect(created.id).toBeTruthy();
+    expect(prisma.aiAppliedSuggestion.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks non coach/admin from creating applied suggestions", async () => {
+    const { service } = buildService({
+      logs: [
+        {
+          id: "log-1",
+          user_id: "user-1",
+          coach_id: "coach-1",
+          created_at: new Date(),
+          safety_flags: [],
+          model_version: "m",
+          strategy_version: "3.3.0"
+        }
+      ]
+    });
+
+    await expect(
+      service.createAppliedSuggestion(actorUser, {
+        ai_log_id: "log-1",
+        routine_id: "routine-1",
+        routine_day_id: "day-1",
+        applied_changes: { set_delta: 1 }
+      })
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it("metrics calculate dedup_savings_pct correctly", async () => {
+    const { service } = buildService({
+      logs: [
+        {
+          id: "l1",
+          user_id: "user-1",
+          coach_id: "coach-1",
+          created_at: new Date(),
+          dedup_hit: true,
+          rate_limited: false
+        },
+        {
+          id: "l2",
+          user_id: "user-1",
+          coach_id: "coach-1",
+          created_at: new Date(),
+          dedup_hit: false,
+          rate_limited: true
+        },
+        {
+          id: "l3",
+          user_id: "user-1",
+          coach_id: "coach-1",
+          created_at: new Date(),
+          dedup_hit: true,
+          rate_limited: false
+        },
+        {
+          id: "l4",
+          user_id: "user-1",
+          coach_id: "coach-1",
+          created_at: new Date(),
+          dedup_hit: false,
+          rate_limited: false
+        }
+      ]
+    });
+
+    const metrics = await service.getMetrics(actorCoach, 7);
+    expect(metrics.total).toBe(4);
+    expect(metrics.dedup_hits).toBe(2);
+    expect(metrics.rate_limited).toBe(1);
+    expect(metrics.dedup_savings_pct).toBe(50);
   });
 });

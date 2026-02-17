@@ -32,6 +32,7 @@ export const aiPlanSuggestionSchema = z.object({
 });
 
 export const aiRecommendationResponseSchema = z.object({
+  ai_log_id: z.string(),
   model_version: z.string(),
   strategy_version: z.string(),
   dedup_hit: z.boolean(),
@@ -54,6 +55,15 @@ export const aiRecommendationResponseSchema = z.object({
     average_rpe: z.number().nullable()
   })
 });
+
+export const aiAppliedSuggestionSchema = z.object({
+  ai_log_id: z.string().uuid(),
+  routine_id: z.string().uuid(),
+  routine_day_id: z.string().uuid(),
+  applied_changes: z.record(z.unknown())
+});
+
+export type AiAppliedSuggestionInput = z.infer<typeof aiAppliedSuggestionSchema>;
 
 export type AiRecommendationRequest = z.infer<typeof aiRecommendationRequestSchema>;
 export type AiRecommendationResponse = z.infer<typeof aiRecommendationResponseSchema>;

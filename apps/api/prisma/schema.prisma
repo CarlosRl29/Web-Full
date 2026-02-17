@@ -39,6 +39,7 @@ model User {
   user_assignments     RoutineAssignment[]  @relation("UserAssignments")
   ai_recommendation_logs AiRecommendationLog[] @relation("AiRecommendationUser")
   ai_coach_logs          AiRecommendationLog[] @relation("AiRecommendationCoach")
+  ai_applied_suggestions AiAppliedSuggestion[] @relation("AiAppliedByUser")
   created_at         DateTime         @default(now())
   updated_at         DateTime         @updatedAt
 }
@@ -65,6 +66,7 @@ model Routine {
   days        RoutineDay[]
   sessions    WorkoutSession[]
   assignments RoutineAssignment[]
+  ai_applied_suggestions AiAppliedSuggestion[]
   created_at  DateTime         @default(now())
   updated_at  DateTime         @updatedAt
 }
@@ -77,6 +79,7 @@ model RoutineDay {
   order_index      Int
   groups           ExerciseGroup[]
   workout_sessions WorkoutSession[]
+  ai_applied_suggestions AiAppliedSuggestion[]
 }
 
 model ExerciseGroup {
@@ -203,11 +206,32 @@ model AiRecommendationLog {
   response_payload Json
   safety_flags     String[]
   request_hash     String?
+  dedup_hit        Boolean  @default(false)
+  rate_limited     Boolean  @default(false)
+  latency_ms       Int?
   model_version    String
   strategy_version String   @default("3.2.0")
+  applied_suggestions AiAppliedSuggestion[]
   created_at       DateTime @default(now())
 
   @@index([user_id, created_at])
   @@index([coach_id, created_at])
   @@index([request_hash, created_at])
+}
+
+model AiAppliedSuggestion {
+  id                 String              @id @default(uuid())
+  ai_log_id          String
+  ai_log             AiRecommendationLog @relation(fields: [ai_log_id], references: [id], onDelete: Cascade)
+  routine_id         String
+  routine            Routine             @relation(fields: [routine_id], references: [id], onDelete: Cascade)
+  routine_day_id     String
+  routine_day        RoutineDay          @relation(fields: [routine_day_id], references: [id], onDelete: Cascade)
+  applied_by_user_id String
+  applied_by_user    User                @relation("AiAppliedByUser", fields: [applied_by_user_id], references: [id], onDelete: Cascade)
+  applied_changes    Json
+  created_at         DateTime            @default(now())
+
+  @@index([routine_id, routine_day_id, created_at])
+  @@index([ai_log_id, created_at])
 }

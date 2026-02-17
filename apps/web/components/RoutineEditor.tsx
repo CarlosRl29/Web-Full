@@ -27,6 +27,7 @@ export type RoutineGroupDraft = {
 
 export type RoutineDraft = {
   id?: string;
+  day_id?: string;
   name: string;
   description: string;
   day_label: string;

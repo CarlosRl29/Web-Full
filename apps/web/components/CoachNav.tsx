@@ -19,6 +19,7 @@ export function CoachNav() {
         <Link href="/coach/routines">Rutinas</Link>
         <Link href="/coach/assignments">Asignaciones</Link>
         <Link href="/coach/ai-logs">AI Logs</Link>
+        <Link href="/coach/ai-metrics">AI Metrics</Link>
       </nav>
       <button
         onClick={() => {

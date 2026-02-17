@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { apiRequest } from "../../../lib/api";
 import { useCoachAuth } from "../../../lib/useCoachAuth";
 
@@ -28,10 +29,22 @@ type AiLogDetail = {
   safety_flags: string[];
   model_version: string;
   strategy_version: string;
+  dedup_hit?: boolean;
+  rate_limited?: boolean;
+  latency_ms?: number | null;
   created_at: string;
+  applied_suggestions?: Array<{
+    id: string;
+    routine_id: string;
+    routine_day_id: string;
+    applied_by_user_id: string;
+    created_at: string;
+  }>;
 };
 
 export default function CoachAiLogsPage() {
+  const searchParams = useSearchParams();
+  const queryLogId = searchParams.get("log_id");
   const { token, loading } = useCoachAuth();
   const [logs, setLogs] = useState<AiLogListItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -76,7 +89,8 @@ export default function CoachAiLogsPage() {
       setNextCursor(data.next_cursor);
       setLogs((prev) => (append ? [...prev, ...data.items] : data.items));
       if (!append && data.items.length > 0) {
-        const detail = await apiRequest<AiLogDetail>(`/ai/logs/${data.items[0].id}`, {}, token);
+        const defaultId = queryLogId ?? data.items[0].id;
+        const detail = await apiRequest<AiLogDetail>(`/ai/logs/${defaultId}`, {}, token);
         setSelected(detail);
       }
       if (!append && data.items.length === 0) {
@@ -94,7 +108,7 @@ export default function CoachAiLogsPage() {
       return;
     }
     void loadLogs();
-  }, [token]);
+  }, [token, queryLogId]);
 
   if (loading) {
     return <p>Cargando...</p>;
@@ -171,6 +185,23 @@ export default function CoachAiLogsPage() {
                 user: {selected.user_id} • model: {selected.model_version} • strategy:{" "}
                 {selected.strategy_version}
               </p>
+              <p>
+                dedup: {selected.dedup_hit ? "si" : "no"} • rate_limited:{" "}
+                {selected.rate_limited ? "si" : "no"} • latency_ms: {selected.latency_ms ?? "-"}
+              </p>
+              {selected.applied_suggestions && selected.applied_suggestions.length > 0 ? (
+                <div>
+                  <h3>Aplicada en</h3>
+                  {selected.applied_suggestions.map((item) => (
+                    <p key={item.id}>
+                      routine: {item.routine_id} • day: {item.routine_day_id} •{" "}
+                      {new Date(item.created_at).toLocaleString()}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <p>No hay trazas de aplicacion para este log.</p>
+              )}
               <h3>request_payload</h3>
               <pre style={{ whiteSpace: "pre-wrap", maxHeight: 260, overflow: "auto" }}>
                 {JSON.stringify(selected.request_payload, null, 2)}

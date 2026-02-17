@@ -7,6 +7,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import {
+  AiAppliedSuggestionInput,
   AiPlanSuggestion,
   AiRecommendationRequest,
   AiRecommendationResponse
@@ -34,6 +35,11 @@ type ListLogsParams = {
   safety_flag?: string;
   from?: string;
   to?: string;
+};
+
+type ListAppliedParams = {
+  routine_id?: string;
+  day_id?: string;
 };
 
 @Injectable()
@@ -226,10 +232,45 @@ export class AiService {
     }
   }
 
+  private isCoachOrAdmin(role: UserRole): boolean {
+    return role === UserRole.COACH || role === UserRole.ADMIN;
+  }
+
+  private async assertCanAccessRoutineForTrace(
+    actor: AuthUser,
+    routineId: string
+  ): Promise<void> {
+    const routine = await this.prisma.routine.findUnique({
+      where: { id: routineId },
+      select: { id: true, owner_id: true }
+    });
+    if (!routine) {
+      throw new NotFoundException("Routine not found");
+    }
+    if (actor.role === UserRole.ADMIN) {
+      return;
+    }
+    if (routine.owner_id === actor.sub) {
+      return;
+    }
+    const assignment = await this.prisma.routineAssignment.findFirst({
+      where: {
+        coach_id: actor.sub,
+        routine_id: routine.id,
+        is_active: true
+      },
+      select: { id: true }
+    });
+    if (!assignment) {
+      throw new ForbiddenException("Coach cannot access this routine trace");
+    }
+  }
+
   async getRecommendations(
     input: AiRecommendationRequest,
     actor: AuthUser
   ): Promise<AiRecommendationResponse> {
+    const startedAt = Date.now();
     if (!this.isEnabled()) {
       throw new ServiceUnavailableException("AI disabled");
     }
@@ -245,14 +286,39 @@ export class AiService {
       where: {
         user_id: actor.sub,
         request_hash: requestHash,
+        rate_limited: false,
         created_at: { gte: dedupSince }
       },
       orderBy: { created_at: "desc" }
     });
     if (cached?.response_payload) {
       const cachedPayload = cached.response_payload as unknown as AiRecommendationResponse;
-      return {
+      const dedupResponse: AiRecommendationResponse = {
         ...cachedPayload,
+        ai_log_id: cached.id,
+        dedup_hit: true
+      };
+      const dedupCreated = await this.prisma.aiRecommendationLog.create({
+        data: {
+          user_id: actor.sub,
+          coach_id:
+            actor.role === UserRole.COACH || actor.role === UserRole.ADMIN
+              ? actor.sub
+              : null,
+          request_payload: input as unknown as object,
+          response_payload: dedupResponse as unknown as object,
+          safety_flags: cached.safety_flags,
+          request_hash: requestHash,
+          dedup_hit: true,
+          rate_limited: false,
+          latency_ms: Date.now() - startedAt,
+          model_version: cached.model_version,
+          strategy_version: cached.strategy_version
+        }
+      });
+      return {
+        ...dedupResponse,
+        ai_log_id: dedupCreated.id,
         dedup_hit: true
       };
     }
@@ -282,6 +348,28 @@ export class AiService {
           )
         : 60;
 
+      await this.prisma.aiRecommendationLog.create({
+        data: {
+          user_id: actor.sub,
+          coach_id:
+            actor.role === UserRole.COACH || actor.role === UserRole.ADMIN
+              ? actor.sub
+              : null,
+          request_payload: input as unknown as object,
+          response_payload: {
+            message: "AI rate limit exceeded",
+            retry_after_seconds: retryAfterSeconds
+          } as object,
+          safety_flags: [],
+          request_hash: requestHash,
+          dedup_hit: false,
+          rate_limited: true,
+          latency_ms: Date.now() - startedAt,
+          model_version: MODEL_VERSION,
+          strategy_version: STRATEGY_VERSION
+        }
+      });
+
       throw new HttpException({
         message: "AI rate limit exceeded",
         retry_after_seconds: retryAfterSeconds
@@ -294,6 +382,7 @@ export class AiService {
     if (this.shouldUseSafeMode(input)) {
       safety_flags.push("acute_pain_guardrail");
       response = {
+        ai_log_id: "",
         model_version: MODEL_VERSION,
         strategy_version: STRATEGY_VERSION,
         dedup_hit: false,
@@ -359,6 +448,7 @@ export class AiService {
       );
 
       response = {
+        ai_log_id: "",
         model_version: MODEL_VERSION,
         strategy_version: STRATEGY_VERSION,
         dedup_hit: false,
@@ -394,7 +484,7 @@ export class AiService {
       };
     }
 
-    await this.prisma.aiRecommendationLog.create({
+    const createdLog = await this.prisma.aiRecommendationLog.create({
       data: {
         user_id: actor.sub,
         coach_id:
@@ -405,12 +495,18 @@ export class AiService {
         response_payload: response as unknown as object,
         safety_flags,
         request_hash: requestHash,
+        dedup_hit: false,
+        rate_limited: false,
+        latency_ms: Date.now() - startedAt,
         model_version: MODEL_VERSION,
         strategy_version: STRATEGY_VERSION
       }
     });
 
-    return response;
+    return {
+      ...response,
+      ai_log_id: createdLog.id
+    };
   }
 
   async getLogs(actor: AuthUser, params: ListLogsParams) {
@@ -477,6 +573,9 @@ export class AiService {
         safety_flags: item.safety_flags,
         model_version: item.model_version,
         strategy_version: item.strategy_version,
+        dedup_hit: item.dedup_hit,
+        rate_limited: item.rate_limited,
+        latency_ms: item.latency_ms,
         created_at: item.created_at
       })),
       next_cursor
@@ -485,7 +584,19 @@ export class AiService {
 
   async getLogById(actor: AuthUser, id: string) {
     const log = await this.prisma.aiRecommendationLog.findUnique({
-      where: { id }
+      where: { id },
+      include: {
+        applied_suggestions: {
+          orderBy: { created_at: "desc" },
+          select: {
+            id: true,
+            routine_id: true,
+            routine_day_id: true,
+            applied_by_user_id: true,
+            created_at: true
+          }
+        }
+      }
     });
     if (!log) {
       throw new NotFoundException("AI log not found");
@@ -516,6 +627,123 @@ export class AiService {
       ...log,
       request_payload: this.sanitizePayload(log.request_payload),
       response_payload: this.sanitizePayload(log.response_payload)
+    };
+  }
+
+  async createAppliedSuggestion(actor: AuthUser, input: AiAppliedSuggestionInput) {
+    if (!this.isCoachOrAdmin(actor.role)) {
+      throw new ForbiddenException("Only coach/admin can apply AI suggestions");
+    }
+
+    await this.assertCanAccessRoutineForTrace(actor, input.routine_id);
+
+    const [log, day] = await Promise.all([
+      this.prisma.aiRecommendationLog.findUnique({
+        where: { id: input.ai_log_id },
+        select: { id: true }
+      }),
+      this.prisma.routineDay.findUnique({
+        where: { id: input.routine_day_id },
+        select: { id: true, routine_id: true }
+      })
+    ]);
+    if (!log) {
+      throw new NotFoundException("AI log not found");
+    }
+    if (!day || day.routine_id !== input.routine_id) {
+      throw new NotFoundException("Routine day not found for routine");
+    }
+
+    return this.prisma.aiAppliedSuggestion.create({
+      data: {
+        ai_log_id: input.ai_log_id,
+        routine_id: input.routine_id,
+        routine_day_id: input.routine_day_id,
+        applied_by_user_id: actor.sub,
+        applied_changes: input.applied_changes as unknown as object
+      }
+    });
+  }
+
+  async listAppliedSuggestions(actor: AuthUser, params: ListAppliedParams) {
+    if (!this.isCoachOrAdmin(actor.role)) {
+      throw new ForbiddenException("Only coach/admin can read AI applied trace");
+    }
+    if (params.routine_id) {
+      await this.assertCanAccessRoutineForTrace(actor, params.routine_id);
+    }
+
+    const where = {
+      ...(params.routine_id ? { routine_id: params.routine_id } : {}),
+      ...(params.day_id ? { routine_day_id: params.day_id } : {})
+    };
+
+    const rows = await this.prisma.aiAppliedSuggestion.findMany({
+      where,
+      include: {
+        ai_log: {
+          select: {
+            id: true,
+            created_at: true,
+            model_version: true,
+            strategy_version: true
+          }
+        }
+      },
+      orderBy: { created_at: "desc" }
+    });
+
+    if (actor.role === UserRole.ADMIN) {
+      return rows;
+    }
+
+    if (!params.routine_id && !params.day_id) {
+      const [allowedAssignments, ownedRoutines] = await Promise.all([
+        this.prisma.routineAssignment.findMany({
+          where: { coach_id: actor.sub, is_active: true },
+          select: { routine_id: true },
+          distinct: ["routine_id"]
+        }),
+        this.prisma.routine.findMany({
+          where: { owner_id: actor.sub },
+          select: { id: true }
+        })
+      ]);
+      const allowed = new Set([
+        ...allowedAssignments.map((item) => item.routine_id),
+        ...ownedRoutines.map((item) => item.id)
+      ]);
+      return rows.filter((row) => allowed.has(row.routine_id));
+    }
+
+    return rows;
+  }
+
+  async getMetrics(actor: AuthUser, days: number) {
+    if (!this.isCoachOrAdmin(actor.role)) {
+      throw new ForbiddenException("Only coach/admin can read AI metrics");
+    }
+    const boundedDays = Math.min(Math.max(days, 1), 90);
+    const since = new Date(Date.now() - boundedDays * 24 * 60 * 60 * 1000);
+    const where =
+      actor.role === UserRole.ADMIN
+        ? { created_at: { gte: since } }
+        : { created_at: { gte: since }, coach_id: actor.sub };
+
+    const [total, dedupHits, rateLimited] = await Promise.all([
+      this.prisma.aiRecommendationLog.count({ where }),
+      this.prisma.aiRecommendationLog.count({ where: { ...where, dedup_hit: true } }),
+      this.prisma.aiRecommendationLog.count({ where: { ...where, rate_limited: true } })
+    ]);
+
+    const dedup_savings_pct = total === 0 ? 0 : Number(((dedupHits / total) * 100).toFixed(2));
+
+    return {
+      days: boundedDays,
+      total,
+      dedup_hits: dedupHits,
+      rate_limited: rateLimited,
+      dedup_savings_pct
     };
   }
 }
