@@ -21,11 +21,17 @@ export class AiController {
   getLogs(
     @CurrentUser() user: AuthUser,
     @Query("user_id") userId?: string,
+    @Query("safety_flag") safetyFlag?: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
     @Query("limit") limit?: string,
     @Query("cursor") cursor?: string
   ) {
     return this.aiService.getLogs(user, {
       user_id: userId,
+      safety_flag: safetyFlag,
+      from,
+      to,
       limit: limit ? Number(limit) : undefined,
       cursor
     });

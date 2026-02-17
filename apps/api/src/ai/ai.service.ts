@@ -1,15 +1,17 @@
 import { ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import {
+  AiPlanSuggestion,
   AiRecommendationRequest,
   AiRecommendationResponse
 } from "@gym/shared";
 import { UserRole } from "@prisma/client";
+import { createHash } from "crypto";
 import { AuthUser } from "../auth/auth.types";
 import { AnalyticsService } from "../analytics/analytics.service";
 import { PrismaService } from "../prisma/prisma.service";
 
 const MODEL_VERSION = "sprint3.1-mvp";
-const STRATEGY_VERSION = "3.2.0";
+const STRATEGY_VERSION = "3.3.0";
 const DISCLAIMER =
   "Recomendaciones generales de entrenamiento. No constituyen consejo medico ni diagnostico.";
 
@@ -22,6 +24,9 @@ type ListLogsParams = {
   user_id?: string;
   limit?: number;
   cursor?: string;
+  safety_flag?: string;
+  from?: string;
+  to?: string;
 };
 
 @Injectable()
@@ -54,6 +59,24 @@ export class AiService {
     return flag.toLowerCase() === "true" || flag === "1";
   }
 
+  private getRateLimitPerDay(): number {
+    const raw = process.env.AI_RATE_LIMIT_PER_DAY;
+    const parsed = Number(raw);
+    if (!raw || Number.isNaN(parsed) || parsed < 1) {
+      return 10;
+    }
+    return Math.floor(parsed);
+  }
+
+  private getDedupWindowHours(): number {
+    const raw = process.env.AI_DEDUP_WINDOW_HOURS;
+    const parsed = Number(raw);
+    if (!raw || Number.isNaN(parsed) || parsed < 1) {
+      return 6;
+    }
+    return Math.floor(parsed);
+  }
+
   private parseCursor(cursor?: string): { created_at: Date; id: string } | null {
     if (!cursor) {
       return null;
@@ -73,6 +96,83 @@ export class AiService {
     return Buffer.from(
       JSON.stringify({ created_at: item.created_at.toISOString(), id: item.id })
     ).toString("base64");
+  }
+
+  private stableNormalize(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value.map((item) => this.stableNormalize(item));
+    }
+    if (value && typeof value === "object") {
+      const sortedEntries = Object.entries(value as Record<string, unknown>)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, val]) => [key, this.stableNormalize(val)]);
+      return Object.fromEntries(sortedEntries);
+    }
+    return value;
+  }
+
+  private buildRequestHash(input: AiRecommendationRequest, summary: unknown): string {
+    const normalized = this.stableNormalize({
+      input,
+      summary,
+      strategy_version: STRATEGY_VERSION
+    });
+    return createHash("sha256")
+      .update(JSON.stringify(normalized))
+      .digest("hex");
+  }
+
+  private buildPlanSuggestions(targetIncreasePercent: number): AiPlanSuggestion[] {
+    const suggestions: AiPlanSuggestion[] = [
+      {
+        id: "volume-main",
+        title: "Ajuste principal de volumen",
+        description:
+          targetIncreasePercent > 0
+            ? "Aumenta un set por ejercicio en grupos single y conserva buena tecnica."
+            : "Mantener sets actuales para estabilizar recuperacion y consistencia.",
+        apply_scope: "SINGLE_GROUPS",
+        set_delta: targetIncreasePercent > 0 ? 1 : 0,
+        rep_min_delta: 0,
+        rep_max_delta: targetIncreasePercent > 0 ? 1 : 0,
+        rest_after_set_seconds: targetIncreasePercent > 0 ? 75 : null,
+        swap_strategy: "NONE"
+      }
+    ];
+
+    if (targetIncreasePercent > 0) {
+      suggestions.push({
+        id: "variation-accessory",
+        title: "Variacion controlada de ejercicio",
+        description: "Rota A1 al siguiente ejercicio disponible para reducir monotonia.",
+        apply_scope: "ALL_GROUPS",
+        set_delta: 0,
+        rep_min_delta: 0,
+        rep_max_delta: 0,
+        rest_between_exercises_seconds: null,
+        swap_order_in_group: "A1",
+        swap_strategy: "NEXT_AVAILABLE"
+      });
+    }
+
+    return suggestions;
+  }
+
+  private buildSafeModeSuggestions(): AiPlanSuggestion[] {
+    return [
+      {
+        id: "safe-mode",
+        title: "Modo seguro",
+        description: "Sin progresion de volumen; mantenga cargas submaximas y tecnica estricta.",
+        apply_scope: "ALL_GROUPS",
+        set_delta: 0,
+        rep_min_delta: -1,
+        rep_max_delta: 0,
+        rest_after_set_seconds: 90,
+        rest_between_exercises_seconds: 30,
+        swap_strategy: "NONE"
+      }
+    ];
   }
 
   private sanitizePayload(value: unknown): unknown {
@@ -131,6 +231,31 @@ export class AiService {
       actor.sub,
       input.context.window_days
     );
+    const requestHash = this.buildRequestHash(input, summary);
+    const dedupSince = new Date(Date.now() - this.getDedupWindowHours() * 60 * 60 * 1000);
+
+    const cached = await this.prisma.aiRecommendationLog.findFirst({
+      where: {
+        user_id: actor.sub,
+        request_hash: requestHash,
+        created_at: { gte: dedupSince }
+      },
+      orderBy: { created_at: "desc" }
+    });
+    if (cached?.response_payload) {
+      return cached.response_payload as unknown as AiRecommendationResponse;
+    }
+
+    const dailySince = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const usedInWindow = await this.prisma.aiRecommendationLog.count({
+      where: {
+        user_id: actor.sub,
+        created_at: { gte: dailySince }
+      }
+    });
+    if (usedInWindow >= this.getRateLimitPerDay()) {
+      throw new ServiceUnavailableException("AI rate limit exceeded");
+    }
 
     const safety_flags: string[] = [];
 
@@ -142,6 +267,11 @@ export class AiService {
         strategy_version: STRATEGY_VERSION,
         safe_mode: true,
         safety_flags,
+        rationale: [
+          "Dolor agudo reportado por el usuario.",
+          "Se evita progresion por seguridad y control de riesgo."
+        ],
+        plan_suggestions: this.buildSafeModeSuggestions(),
         disclaimer: DISCLAIMER,
         recommendation_summary:
           "Se detecto dolor agudo o lesion reportada. Se recomienda reducir intensidad y consultar a un profesional de salud antes de progresar.",
@@ -201,6 +331,14 @@ export class AiService {
         strategy_version: STRATEGY_VERSION,
         safe_mode: false,
         safety_flags,
+        rationale: [
+          `Adherencia observada: ${(summary.adherence * 100).toFixed(0)}%.`,
+          `RPE promedio: ${summary.average_rpe ?? 0}.`,
+          targetIncreasePercent > 0
+            ? "Existe margen para progresion gradual."
+            : "Se prioriza estabilizar recuperacion antes de progresar."
+        ],
+        plan_suggestions: this.buildPlanSuggestions(targetIncreasePercent),
         disclaimer: DISCLAIMER,
         recommendation_summary: summaryText,
         adjustments: [
@@ -233,6 +371,7 @@ export class AiService {
         request_payload: input as unknown as object,
         response_payload: response as unknown as object,
         safety_flags,
+        request_hash: requestHash,
         model_version: MODEL_VERSION,
         strategy_version: STRATEGY_VERSION
       }
@@ -266,6 +405,15 @@ export class AiService {
 
     const whereClause = {
       ...(userIdsFilter ? { user_id: { in: userIdsFilter } } : {}),
+      ...(params.safety_flag ? { safety_flags: { has: params.safety_flag } } : {}),
+      ...(params.from || params.to
+        ? {
+            created_at: {
+              ...(params.from ? { gte: new Date(params.from) } : {}),
+              ...(params.to ? { lte: new Date(params.to) } : {})
+            }
+          }
+        : {}),
       ...(cursor
         ? {
             OR: [

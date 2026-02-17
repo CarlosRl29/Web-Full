@@ -17,11 +17,27 @@ export const aiRecommendationRequestSchema = z.object({
   })
 });
 
+export const aiPlanSuggestionSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string(),
+  apply_scope: z.enum(["ALL_GROUPS", "SINGLE_GROUPS"]).default("ALL_GROUPS"),
+  set_delta: z.number().int().min(-3).max(3).default(0),
+  rep_min_delta: z.number().int().min(-5).max(5).default(0),
+  rep_max_delta: z.number().int().min(-5).max(5).default(0),
+  rest_after_set_seconds: z.number().int().min(0).max(600).nullable().optional(),
+  rest_between_exercises_seconds: z.number().int().min(0).max(600).nullable().optional(),
+  swap_order_in_group: z.enum(["A1", "A2", "A3"]).nullable().optional(),
+  swap_strategy: z.enum(["NONE", "NEXT_AVAILABLE"]).default("NONE")
+});
+
 export const aiRecommendationResponseSchema = z.object({
   model_version: z.string(),
   strategy_version: z.string(),
   safe_mode: z.boolean(),
   safety_flags: z.array(z.string()),
+  rationale: z.array(z.string()),
+  plan_suggestions: z.array(aiPlanSuggestionSchema),
   disclaimer: z.string(),
   recommendation_summary: z.string(),
   adjustments: z.array(z.object({
@@ -40,3 +56,4 @@ export const aiRecommendationResponseSchema = z.object({
 
 export type AiRecommendationRequest = z.infer<typeof aiRecommendationRequestSchema>;
 export type AiRecommendationResponse = z.infer<typeof aiRecommendationResponseSchema>;
+export type AiPlanSuggestion = z.infer<typeof aiPlanSuggestionSchema>;

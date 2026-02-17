@@ -36,10 +36,23 @@ describe("AiService", () => {
           logs.push(created);
           return created;
         }),
-        findMany: jest.fn().mockImplementation(async ({ where, orderBy, take }: any) => {
+        findMany: jest.fn().mockImplementation(async ({ where, take }: any) => {
           let filtered = [...logs];
           if (where?.user_id?.in) {
             filtered = filtered.filter((item) => where.user_id.in.includes(item.user_id));
+          }
+          if (where?.safety_flags?.has) {
+            filtered = filtered.filter((item) =>
+              (item.safety_flags ?? []).includes(where.safety_flags.has)
+            );
+          }
+          if (where?.created_at?.gte) {
+            const fromTs = new Date(where.created_at.gte).getTime();
+            filtered = filtered.filter((item) => new Date(item.created_at).getTime() >= fromTs);
+          }
+          if (where?.created_at?.lte) {
+            const toTs = new Date(where.created_at.lte).getTime();
+            filtered = filtered.filter((item) => new Date(item.created_at).getTime() <= toTs);
           }
           if (where?.OR) {
             const [a, b] = where.OR;
@@ -68,6 +81,36 @@ describe("AiService", () => {
             return r.id.localeCompare(l.id);
           });
           return filtered.slice(0, take ?? filtered.length);
+        }),
+        count: jest.fn().mockImplementation(async ({ where }: any) => {
+          let filtered = [...logs];
+          if (where?.user_id) {
+            filtered = filtered.filter((item) => item.user_id === where.user_id);
+          }
+          if (where?.created_at?.gte) {
+            const fromTs = new Date(where.created_at.gte).getTime();
+            filtered = filtered.filter((item) => new Date(item.created_at).getTime() >= fromTs);
+          }
+          return filtered.length;
+        }),
+        findFirst: jest.fn().mockImplementation(async ({ where, orderBy }: any) => {
+          let filtered = [...logs];
+          if (where?.user_id) {
+            filtered = filtered.filter((item) => item.user_id === where.user_id);
+          }
+          if (where?.request_hash) {
+            filtered = filtered.filter((item) => item.request_hash === where.request_hash);
+          }
+          if (where?.created_at?.gte) {
+            const gte = new Date(where.created_at.gte).getTime();
+            filtered = filtered.filter((item) => new Date(item.created_at).getTime() >= gte);
+          }
+          if (orderBy?.created_at === "desc") {
+            filtered.sort(
+              (l, r) => new Date(r.created_at).getTime() - new Date(l.created_at).getTime()
+            );
+          }
+          return filtered[0] ?? null;
         }),
         findUnique: jest.fn().mockImplementation(async ({ where }: any) =>
           logs.find((item) => item.id === where.id) ?? null
@@ -141,7 +184,8 @@ describe("AiService", () => {
     expect(response.safety_flags).toContain("acute_pain_guardrail");
     expect(prisma.aiRecommendationLog.create).toHaveBeenCalledTimes(1);
     expect(response.model_version).toBeTruthy();
-    expect(response.strategy_version).toBe("3.2.0");
+    expect(response.strategy_version).toBe("3.3.0");
+    expect(response.plan_suggestions.length).toBeGreaterThan(0);
     delete process.env.AI_ENABLED;
   });
 
@@ -155,7 +199,7 @@ describe("AiService", () => {
           created_at: new Date("2026-02-17T12:00:00.000Z"),
           safety_flags: [],
           model_version: "m",
-          strategy_version: "3.2.0"
+          strategy_version: "3.3.0"
         }
       ]
     });
@@ -176,7 +220,7 @@ describe("AiService", () => {
           response_payload: {},
           safety_flags: [],
           model_version: "m",
-          strategy_version: "3.2.0"
+          strategy_version: "3.3.0"
         }
       ],
       assignments: [{ coach_id: "coach-1", user_id: "user-1", is_active: true }]
@@ -197,7 +241,7 @@ describe("AiService", () => {
           created_at: new Date("2026-02-17T12:03:00.000Z"),
           safety_flags: [],
           model_version: "m",
-          strategy_version: "3.2.0"
+          strategy_version: "3.3.0"
         },
         {
           id: "log-2",
@@ -206,7 +250,7 @@ describe("AiService", () => {
           created_at: new Date("2026-02-17T12:02:00.000Z"),
           safety_flags: [],
           model_version: "m",
-          strategy_version: "3.2.0"
+          strategy_version: "3.3.0"
         },
         {
           id: "log-1",
@@ -215,7 +259,7 @@ describe("AiService", () => {
           created_at: new Date("2026-02-17T12:01:00.000Z"),
           safety_flags: [],
           model_version: "m",
-          strategy_version: "3.2.0"
+          strategy_version: "3.3.0"
         }
       ]
     });
@@ -230,5 +274,107 @@ describe("AiService", () => {
     });
     expect(secondPage.items).toHaveLength(1);
     expect(secondPage.items[0].id).toBe("log-1");
+  });
+
+  it("rate limit blocks when quota exceeded", async () => {
+    process.env.AI_ENABLED = "true";
+    process.env.AI_RATE_LIMIT_PER_DAY = "1";
+    const now = new Date();
+    const { service, prisma } = buildService({
+      logs: [
+        {
+          id: "log-old",
+          user_id: "user-1",
+          created_at: now,
+          request_hash: "other-hash",
+          response_payload: { safe_mode: false },
+          safety_flags: [],
+          model_version: "m",
+          strategy_version: "3.3.0"
+        }
+      ]
+    });
+
+    await expect(
+      service.getRecommendations(
+        {
+          profile: {
+            experience_level: "INTERMEDIATE",
+            goal: "HYPERTROPHY",
+            days_per_week: 4
+          },
+          context: { window_days: 28 }
+        },
+        actorUser
+      )
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+
+    expect(prisma.aiRecommendationLog.create).not.toHaveBeenCalled();
+    delete process.env.AI_ENABLED;
+    delete process.env.AI_RATE_LIMIT_PER_DAY;
+  });
+
+  it("dedup returns cached response for same input", async () => {
+    process.env.AI_ENABLED = "true";
+    process.env.AI_RATE_LIMIT_PER_DAY = "10";
+    process.env.AI_DEDUP_WINDOW_HOURS = "6";
+    const cachedResponse = {
+      model_version: "cache-model",
+      strategy_version: "3.3.0",
+      safe_mode: false,
+      safety_flags: [],
+      rationale: ["cached"],
+      plan_suggestions: [],
+      disclaimer: "d",
+      recommendation_summary: "cached result",
+      adjustments: [],
+      based_on: {
+        window_days: 28,
+        sessions_analyzed: 1,
+        volume_total: 100,
+        adherence: 1,
+        average_rpe: 7
+      }
+    };
+    const { service, prisma } = buildService({
+      logs: [
+        {
+          id: "log-cached",
+          user_id: "user-1",
+          created_at: new Date(),
+          request_hash:
+            "b9edb0c5e04c1ae4ff8f113142db506bf61d23adc47f9ed8ec5f5ca159b5f362",
+          response_payload: cachedResponse,
+          safety_flags: [],
+          model_version: "cache-model",
+          strategy_version: "3.3.0"
+        }
+      ]
+    });
+
+    const originalHashFn = (service as any).buildRequestHash;
+    (service as any).buildRequestHash = jest
+      .fn()
+      .mockReturnValue("b9edb0c5e04c1ae4ff8f113142db506bf61d23adc47f9ed8ec5f5ca159b5f362");
+
+    const response = await service.getRecommendations(
+      {
+        profile: {
+          experience_level: "INTERMEDIATE",
+          goal: "HYPERTROPHY",
+          days_per_week: 4
+        },
+        context: { window_days: 28 }
+      },
+      actorUser
+    );
+
+    expect(response.recommendation_summary).toBe("cached result");
+    expect(prisma.aiRecommendationLog.create).not.toHaveBeenCalled();
+
+    (service as any).buildRequestHash = originalHashFn;
+    delete process.env.AI_ENABLED;
+    delete process.env.AI_RATE_LIMIT_PER_DAY;
+    delete process.env.AI_DEDUP_WINDOW_HOURS;
   });
 });

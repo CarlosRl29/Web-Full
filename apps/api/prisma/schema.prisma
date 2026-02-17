@@ -202,10 +202,12 @@ model AiRecommendationLog {
   request_payload  Json
   response_payload Json
   safety_flags     String[]
+  request_hash     String?
   model_version    String
   strategy_version String   @default("3.2.0")
   created_at       DateTime @default(now())
 
   @@index([user_id, created_at])
   @@index([coach_id, created_at])
+  @@index([request_hash, created_at])
 }
