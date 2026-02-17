@@ -9,7 +9,10 @@ describe("WorkoutSessionsService", () => {
       workoutSession: {
         updateMany: jest.fn().mockResolvedValue({}),
         create: jest.fn().mockResolvedValue({ id: "session-1" }),
-        findUniqueOrThrow: jest.fn().mockResolvedValue({ id: "session-1" })
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          id: "session-1",
+          workout_groups: []
+        })
       },
       workoutGroup: {
         create: jest.fn().mockImplementation(async ({ data }) => {
@@ -29,6 +32,13 @@ describe("WorkoutSessionsService", () => {
       routine: {
         findUnique: jest.fn().mockResolvedValue({ id: "routine-1", owner_id: "user-1" })
       },
+      routineAssignment: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      exerciseGroup: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      $queryRawUnsafe: jest.fn().mockResolvedValue([]),
       routineDay: {
         findUnique: jest.fn().mockResolvedValue({
           id: "day-1",

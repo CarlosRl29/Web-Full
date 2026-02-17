@@ -35,6 +35,8 @@ model User {
   created_exercises  Exercise[]
   routines           Routine[]
   workout_sessions   WorkoutSession[]
+  coached_assignments  RoutineAssignment[]  @relation("CoachAssignments")
+  user_assignments     RoutineAssignment[]  @relation("UserAssignments")
   created_at         DateTime         @default(now())
   updated_at         DateTime         @updatedAt
 }
@@ -60,6 +62,7 @@ model Routine {
   description String?
   days        RoutineDay[]
   sessions    WorkoutSession[]
+  assignments RoutineAssignment[]
   created_at  DateTime         @default(now())
   updated_at  DateTime         @updatedAt
 }
@@ -95,8 +98,29 @@ model GroupExercise {
   exercise              Exercise      @relation(fields: [exercise_id], references: [id])
   order_in_group        String
   target_sets_per_round Int
+  rep_range_min         Int?
+  rep_range_max         Int?
   rep_range             String
   notes                 String?
+}
+
+model RoutineAssignment {
+  id         String   @id @default(uuid())
+  coach_id   String
+  coach      User     @relation("CoachAssignments", fields: [coach_id], references: [id], onDelete: Cascade)
+  user_id    String
+  user       User     @relation("UserAssignments", fields: [user_id], references: [id], onDelete: Cascade)
+  routine_id String
+  routine    Routine  @relation(fields: [routine_id], references: [id], onDelete: Cascade)
+  is_active  Boolean  @default(true)
+  start_date DateTime @default(now())
+  coach_notes String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([coach_id, user_id, routine_id])
+  @@index([user_id, is_active])
+  @@index([coach_id, is_active])
 }
 
 model WorkoutSession {
@@ -115,6 +139,7 @@ model WorkoutSession {
   override_rest_after_round_seconds       Int?
   override_rest_after_set_seconds         Int?
   workout_groups                          WorkoutGroup[]
+  processed_events                        WorkoutProcessedEvent[]
 }
 
 model WorkoutGroup {
@@ -154,4 +179,14 @@ model WorkoutSet {
   rpe                      Float?
   completed_at             DateTime?
   is_done                  Boolean             @default(false)
+}
+
+model WorkoutProcessedEvent {
+  session_id String
+  event_id   String
+  created_at DateTime @default(now())
+
+  session WorkoutSession @relation(fields: [session_id], references: [id], onDelete: Cascade)
+
+  @@id([session_id, event_id])
 }

@@ -18,6 +18,64 @@ const defaultPointer = {
 export class WorkoutSessionsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private async hasActiveAssignment(userId: string, routineId: string): Promise<boolean> {
+    const rows = await this.prisma.$queryRawUnsafe<Array<{ id: string }>>(
+      `
+        SELECT id
+        FROM "RoutineAssignment"
+        WHERE user_id = $1
+          AND routine_id = $2
+          AND is_active = TRUE
+        LIMIT 1
+      `,
+      userId,
+      routineId
+    );
+    return rows.length > 0;
+  }
+
+  private async withExerciseNames<
+    T extends {
+      workout_groups: Array<{
+        source_group_id: string;
+        workout_items: Array<{ source_group_exercise_id: string }>;
+      }>;
+    }
+  >(
+    session: T
+  ): Promise<T> {
+    const sourceGroupIds = session.workout_groups.map((group) => group.source_group_id);
+    const groups = await this.prisma.exerciseGroup.findMany({
+      where: { id: { in: sourceGroupIds } },
+      include: {
+        exercises: {
+          include: { exercise: true }
+        }
+      }
+    });
+
+    const exerciseNameByGroupExerciseId = groups.reduce<Record<string, string>>(
+      (acc, group) => {
+        group.exercises.forEach((groupExercise) => {
+          acc[groupExercise.id] = groupExercise.exercise.name;
+        });
+        return acc;
+      },
+      {}
+    );
+
+    return {
+      ...session,
+      workout_groups: session.workout_groups.map((group) => ({
+        ...group,
+        workout_items: group.workout_items.map((item) => ({
+          ...item,
+          exercise_name: exerciseNameByGroupExerciseId[item.source_group_exercise_id] ?? null
+        }))
+      }))
+    } as T;
+  }
+
   async start(input: StartSessionInput, userId: string) {
     const routine = await this.prisma.routine.findUnique({
       where: { id: input.routine_id }
@@ -25,7 +83,8 @@ export class WorkoutSessionsService {
     if (!routine) {
       throw new NotFoundException("Routine not found");
     }
-    if (routine.owner_id !== userId) {
+    const hasAssignment = await this.hasActiveAssignment(userId, input.routine_id);
+    if (routine.owner_id !== userId && !hasAssignment) {
       throw new ForbiddenException("Routine does not belong to user");
     }
 
@@ -112,7 +171,7 @@ export class WorkoutSessionsService {
         }
       }
 
-      return tx.workoutSession.findUniqueOrThrow({
+      const created = await tx.workoutSession.findUniqueOrThrow({
         where: { id: session.id },
         include: {
           workout_groups: {
@@ -128,11 +187,12 @@ export class WorkoutSessionsService {
           }
         }
       });
+      return this.withExerciseNames(created);
     });
   }
 
   async getActive(userId: string) {
-    return this.prisma.workoutSession.findFirst({
+    const active = await this.prisma.workoutSession.findFirst({
       where: { user_id: userId, status: "ACTIVE" },
       include: {
         workout_groups: {
@@ -147,6 +207,10 @@ export class WorkoutSessionsService {
       },
       orderBy: { started_at: "desc" }
     });
+    if (!active) {
+      return null;
+    }
+    return this.withExerciseNames(active);
   }
 
   async patchProgress(input: UpdateProgressInput, userId: string) {
@@ -159,6 +223,36 @@ export class WorkoutSessionsService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      if (input.event_id) {
+        const inserted = await tx.$executeRawUnsafe(
+          `
+            INSERT INTO "WorkoutProcessedEvent" (session_id, event_id)
+            VALUES ($1, $2)
+            ON CONFLICT DO NOTHING
+          `,
+          active.id,
+          input.event_id
+        );
+        if (inserted === 0) {
+          // duplicate event_id for this session -> idempotent return
+          const duplicateSnapshot = await tx.workoutSession.findUniqueOrThrow({
+            where: { id: active.id },
+            include: {
+              workout_groups: {
+                include: {
+                  workout_items: {
+                    include: { sets: true },
+                    orderBy: { order_in_group: "asc" }
+                  }
+                },
+                orderBy: { order_index: "asc" }
+              }
+            }
+          });
+          return this.withExerciseNames(duplicateSnapshot);
+        }
+      }
+
       if (input.current_pointer) {
         await tx.workoutSession.update({
           where: { id: active.id },
@@ -197,7 +291,7 @@ export class WorkoutSessionsService {
         });
       }
 
-      return tx.workoutSession.findUniqueOrThrow({
+      const updated = await tx.workoutSession.findUniqueOrThrow({
         where: { id: active.id },
         include: {
           workout_groups: {
@@ -211,6 +305,7 @@ export class WorkoutSessionsService {
           }
         }
       });
+      return this.withExerciseNames(updated);
     });
   }
 
@@ -227,12 +322,13 @@ export class WorkoutSessionsService {
       throw new NotFoundException("No active session");
     }
 
-    return this.prisma.workoutSession.update({
+    const finished = await this.prisma.workoutSession.update({
       where: { id: active.id },
       data: {
         status: "FINISHED",
         ended_at: new Date()
       }
     });
+    return finished;
   }
 }
