@@ -7,6 +7,7 @@ import { RoutinesModule } from "./routines/routines.module";
 import { WorkoutSessionsModule } from "./workout-sessions/workout-sessions.module";
 import { CoachModule } from "./coach/coach.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
+import { AiModule } from "./ai/ai.module";
 import { JwtAuthGuard } from "./auth/jwt-auth.guard";
 import { RolesGuard } from "./common/roles.guard";
 import { ResponseInterceptor } from "./common/response.interceptor";
@@ -19,7 +20,8 @@ import { ResponseInterceptor } from "./common/response.interceptor";
     RoutinesModule,
     WorkoutSessionsModule,
     CoachModule,
-    AnalyticsModule
+    AnalyticsModule,
+    AiModule
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

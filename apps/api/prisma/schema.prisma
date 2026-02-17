@@ -37,6 +37,8 @@ model User {
   workout_sessions   WorkoutSession[]
   coached_assignments  RoutineAssignment[]  @relation("CoachAssignments")
   user_assignments     RoutineAssignment[]  @relation("UserAssignments")
+  ai_recommendation_logs AiRecommendationLog[] @relation("AiRecommendationUser")
+  ai_coach_logs          AiRecommendationLog[] @relation("AiRecommendationCoach")
   created_at         DateTime         @default(now())
   updated_at         DateTime         @updatedAt
 }
@@ -189,4 +191,20 @@ model WorkoutProcessedEvent {
   session WorkoutSession @relation(fields: [session_id], references: [id], onDelete: Cascade)
 
   @@id([session_id, event_id])
+}
+
+model AiRecommendationLog {
+  id               String   @id @default(uuid())
+  user_id          String
+  user             User     @relation("AiRecommendationUser", fields: [user_id], references: [id], onDelete: Cascade)
+  coach_id         String?
+  coach            User?    @relation("AiRecommendationCoach", fields: [coach_id], references: [id], onDelete: SetNull)
+  request_payload  Json
+  response_payload Json
+  safety_flags     String[]
+  model_version    String
+  created_at       DateTime @default(now())
+
+  @@index([user_id, created_at])
+  @@index([coach_id, created_at])
 }
