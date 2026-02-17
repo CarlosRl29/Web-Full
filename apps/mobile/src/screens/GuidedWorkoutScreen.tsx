@@ -1,10 +1,24 @@
 import React, { useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { RestTimer } from "../components/RestTimer";
 import { ActiveSession, Pointer, WorkoutGroup } from "../types";
 
 type Props = {
   session: ActiveSession;
+  isOnline: boolean;
+  isSyncing: boolean;
+  pendingCount: number;
+  queuePreview: Array<{
+    event_id: string;
+    created_at: string;
+    updated_at: string;
+    status: "pending" | "sending" | "acked" | "failed";
+    attempts: number;
+    last_error?: string;
+    type: "PATCH_PROGRESS";
+  }>;
+  onForceSync: () => Promise<void>;
+  onRetryFailed: () => Promise<void>;
   onSetSave: (payload: {
     workout_exercise_item_id: string;
     set_number: number;
@@ -56,12 +70,20 @@ function nextPointer(pointer: Pointer, groups: WorkoutGroup[]): Pointer | null {
 
 export function GuidedWorkoutScreen({
   session,
+  isOnline,
+  isSyncing,
+  pendingCount,
+  queuePreview,
+  onForceSync,
+  onRetryFailed,
   onSetSave,
   onPointerSave,
   onFinish
 }: Props) {
   const [weight, setWeight] = useState(20);
   const [reps, setReps] = useState(10);
+  const [showQueueModal, setShowQueueModal] = useState(false);
+  const [restBanner, setRestBanner] = useState<string | null>(null);
   const [rest, setRest] = useState<{ label: "Transicion" | "Descanso"; seconds: number } | null>(
     null
   );
@@ -101,6 +123,7 @@ export function GuidedWorkoutScreen({
   }
 
   const setNumber = pointer.round_index + 1;
+  const exerciseName = item.exercise_name ?? item.order_in_group;
   const shouldShowTransition =
     group.workout_items.length > 1 && pointer.exercise_index < group.workout_items.length - 1;
   const shouldShowRoundRest =
@@ -118,18 +141,50 @@ export function GuidedWorkoutScreen({
         </Text>
       </View>
 
-      {group.type !== "SINGLE" && (
+      <View style={styles.badgeRow}>
+        <Text style={styles.badge}>
+          Ronda {pointer.round_index + 1}/{group.rounds_total}
+        </Text>
+        <Text style={styles.badge}>{item.order_in_group}</Text>
+      </View>
+      <View style={styles.badgeRow}>
+        <Text style={styles.badge}>{isOnline ? "Online" : "Offline"}</Text>
+        <Text style={[styles.badge, pendingCount > 0 && styles.pendingBadge]}>
+          Pendientes: {pendingCount}
+        </Text>
+      </View>
+
+      {__DEV__ && (
         <View style={styles.badgeRow}>
-          <Text style={styles.badge}>
-            Ronda {pointer.round_index + 1}/{group.rounds_total}
-          </Text>
-          <Text style={styles.badge}>{item.order_in_group}</Text>
+          <Pressable
+            style={[styles.debugBtn, !isOnline && styles.debugBtnDisabled]}
+            onPress={() => void onForceSync()}
+            disabled={!isOnline || isSyncing}
+          >
+            <Text style={styles.debugText}>{isSyncing ? "Sincronizando..." : "Forzar sync"}</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.debugBtn, !isOnline && styles.debugBtnDisabled]}
+            onPress={() => void onRetryFailed()}
+            disabled={!isOnline || isSyncing}
+          >
+            <Text style={styles.debugText}>Reintentar failed</Text>
+          </Pressable>
+          <Pressable style={styles.debugBtn} onPress={() => setShowQueueModal(true)}>
+            <Text style={styles.debugText}>Ver cola</Text>
+          </Pressable>
         </View>
       )}
 
+      {restBanner ? (
+        <View style={styles.banner}>
+          <Text style={styles.bannerText}>{restBanner}</Text>
+        </View>
+      ) : null}
+
       <View style={styles.focusCard}>
         <Text style={styles.exerciseLabel}>Ejercicio enfocado</Text>
-        <Text style={styles.exerciseName}>{item.order_in_group}</Text>
+        <Text style={styles.exerciseName}>{exerciseName}</Text>
         <Text style={styles.repRange}>Objetivo reps: {item.rep_range}</Text>
       </View>
 
@@ -196,9 +251,37 @@ export function GuidedWorkoutScreen({
           seconds={rest.seconds}
           onDone={() => {
             setRest(null);
+            setRestBanner("Descanso terminado");
+            setTimeout(() => {
+              setRestBanner(null);
+            }, 2000);
           }}
         />
       )}
+
+      <Modal visible={showQueueModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Ultimos eventos en cola</Text>
+            <ScrollView style={styles.modalList}>
+              {queuePreview.length === 0 ? (
+                <Text style={styles.modalItem}>Sin eventos pendientes.</Text>
+              ) : (
+                queuePreview.map((event) => (
+                  <Text key={event.event_id} style={styles.modalItem}>
+                    {event.status.toUpperCase()} • at:{event.attempts} •{" "}
+                    {new Date(event.updated_at).toLocaleTimeString()}
+                    {event.last_error ? ` • ${event.last_error}` : ""}
+                  </Text>
+                ))
+              )}
+            </ScrollView>
+            <Pressable style={styles.modalClose} onPress={() => setShowQueueModal(false)}>
+              <Text style={styles.modalCloseText}>Cerrar</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -213,6 +296,28 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 30
   },
+  pendingBadge: {
+    backgroundColor: "#7f1d1d",
+    color: "#fecaca"
+  },
+  debugBtn: {
+    flex: 1,
+    backgroundColor: "#1e293b",
+    borderWidth: 1,
+    borderColor: "#334155",
+    paddingVertical: 10,
+    borderRadius: 8
+  },
+  debugBtnDisabled: { opacity: 0.5 },
+  debugText: { color: "#cbd5e1", textAlign: "center", fontWeight: "700" },
+  banner: {
+    marginTop: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: "#164e63"
+  },
+  bannerText: { color: "#cffafe", fontWeight: "700", textAlign: "center" },
   focusCard: {
     marginTop: 8,
     backgroundColor: "#111827",
@@ -276,5 +381,29 @@ const styles = StyleSheet.create({
     backgroundColor: "#22c55e",
     borderRadius: 10
   },
-  finishBtnText: { color: "#052e16", textAlign: "center", fontWeight: "800" }
+  finishBtnText: { color: "#052e16", textAlign: "center", fontWeight: "800" },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(2,6,23,0.75)",
+    justifyContent: "center",
+    padding: 16
+  },
+  modalCard: {
+    backgroundColor: "#0f172a",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#1e293b",
+    padding: 14,
+    maxHeight: "70%"
+  },
+  modalTitle: { color: "#f8fafc", fontSize: 18, fontWeight: "700", marginBottom: 8 },
+  modalList: { marginTop: 4 },
+  modalItem: { color: "#cbd5e1", marginBottom: 8 },
+  modalClose: {
+    marginTop: 8,
+    backgroundColor: "#22c55e",
+    borderRadius: 10,
+    paddingVertical: 12
+  },
+  modalCloseText: { color: "#052e16", textAlign: "center", fontWeight: "800" }
 });

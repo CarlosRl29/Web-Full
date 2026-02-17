@@ -26,6 +26,8 @@ type Props = {
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
     priority: Notifications.AndroidNotificationPriority.HIGH
@@ -67,6 +69,7 @@ export function RestTimer({ label, seconds, onDone }: Props) {
             sound: true
           },
           trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DATE,
             date: new Date(triggerAt),
             channelId: Platform.OS === "android" ? REST_DONE_CHANNEL_ID : undefined
           }
@@ -89,7 +92,7 @@ export function RestTimer({ label, seconds, onDone }: Props) {
       );
       soundRef.current = sound;
       sound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinishAndNotJustSeek) {
+        if (status.isLoaded && status.didJustFinish) {
           sound.unloadAsync();
           soundRef.current = null;
         }
@@ -100,13 +103,15 @@ export function RestTimer({ label, seconds, onDone }: Props) {
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
     (async () => {
       const { status } = await Notifications.requestPermissionsAsync();
-      if (status === "granted") {
+      if (status === "granted" && isMounted) {
         await scheduleNotification(endAtRef.current);
       }
     })();
     return () => {
+      isMounted = false;
       cancelNotification();
     };
   }, [scheduleNotification, cancelNotification]);
@@ -140,7 +145,7 @@ export function RestTimer({ label, seconds, onDone }: Props) {
     };
   }, [onDone, playSoundAndVibrate]);
 
-  const handleSkip = () => {
+  const handleSkip = async () => {
     if (completedRef.current) return;
     completedRef.current = true;
     if (intervalRef.current) {
@@ -148,12 +153,13 @@ export function RestTimer({ label, seconds, onDone }: Props) {
       intervalRef.current = null;
     }
     endAtRef.current = Date.now();
-    cancelNotification();
+    await cancelNotification();
     playSoundAndVibrate();
     onDone();
   };
 
   const handleAdd15s = () => {
+    if (completedRef.current) return;
     endAtRef.current += 15000;
     scheduleNotification(endAtRef.current);
   };

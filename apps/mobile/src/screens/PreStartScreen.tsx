@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import {
+  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
@@ -7,10 +8,14 @@ import {
   View
 } from "react-native";
 import { StartSessionInput } from "@gym/shared";
+import { Routine, RoutineDay } from "../types";
 
 type Props = {
   hasActiveSession: boolean;
   onResume: () => void;
+  routine: Routine;
+  day: RoutineDay;
+  onBack: () => void;
   onStart: (payload: StartSessionInput) => Promise<void>;
 };
 
@@ -22,12 +27,19 @@ function parseOrUndefined(value: string) {
   return Number.isNaN(n) ? undefined : n;
 }
 
-export function PreStartScreen({ hasActiveSession, onResume, onStart }: Props) {
-  const [routineId, setRoutineId] = useState("00000000-0000-0000-0000-000000000001");
-  const [dayId, setDayId] = useState("00000000-0000-0000-0000-000000000002");
+export function PreStartScreen({
+  hasActiveSession,
+  onResume,
+  routine,
+  day,
+  onBack,
+  onStart
+}: Props) {
   const [restBetween, setRestBetween] = useState("");
   const [restAfterRound, setRestAfterRound] = useState("");
   const [restAfterSet, setRestAfterSet] = useState("");
+  const [isStarting, setIsStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   return (
     <View style={styles.container}>
@@ -36,10 +48,12 @@ export function PreStartScreen({ hasActiveSession, onResume, onStart }: Props) {
         Overrides de descanso para esta sesion (sin modificar rutina base)
       </Text>
 
-      <Text style={styles.label}>Routine ID</Text>
-      <TextInput value={routineId} onChangeText={setRoutineId} style={styles.input} />
-      <Text style={styles.label}>Day ID</Text>
-      <TextInput value={dayId} onChangeText={setDayId} style={styles.input} />
+      <View style={styles.selectionCard}>
+        <Text style={styles.selectionLabel}>Rutina</Text>
+        <Text style={styles.selectionValue}>{routine.name}</Text>
+        <Text style={styles.selectionLabel}>Dia</Text>
+        <Text style={styles.selectionValue}>{day.day_label}</Text>
+      </View>
 
       <Text style={styles.label}>rest_between_exercises_seconds</Text>
       <TextInput
@@ -69,25 +83,44 @@ export function PreStartScreen({ hasActiveSession, onResume, onStart }: Props) {
         placeholderTextColor="#64748b"
       />
 
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+
       <Pressable
-        onPress={() =>
-          onStart({
-            routine_id: routineId,
-            day_id: dayId,
-            overrides: {
-              rest_between_exercises_seconds: parseOrUndefined(restBetween),
-              rest_after_round_seconds: parseOrUndefined(restAfterRound),
-              rest_after_set_seconds: parseOrUndefined(restAfterSet)
-            }
-          })
-        }
-        style={styles.cta}
+        onPress={async () => {
+          setError(null);
+          setIsStarting(true);
+          try {
+            await onStart({
+              routine_id: routine.id,
+              day_id: day.id,
+              overrides: {
+                rest_between_exercises_seconds: parseOrUndefined(restBetween),
+                rest_after_round_seconds: parseOrUndefined(restAfterRound),
+                rest_after_set_seconds: parseOrUndefined(restAfterSet)
+              }
+            });
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "No se pudo iniciar la sesion");
+          } finally {
+            setIsStarting(false);
+          }
+        }}
+        style={[styles.cta, isStarting && styles.disabled]}
+        disabled={isStarting}
       >
-        <Text style={styles.ctaText}>Iniciar sesion</Text>
+        {isStarting ? (
+          <ActivityIndicator color="#052e16" />
+        ) : (
+          <Text style={styles.ctaText}>Iniciar sesion</Text>
+        )}
+      </Pressable>
+
+      <Pressable onPress={onBack} style={styles.ghost}>
+        <Text style={styles.ghostText}>Volver a rutinas</Text>
       </Pressable>
 
       {hasActiveSession && (
-        <Pressable onPress={onResume} style={styles.ghost}>
+        <Pressable onPress={onResume} style={styles.resume}>
           <Text style={styles.ghostText}>Reanudar sesion activa</Text>
         </Pressable>
       )}
@@ -99,6 +132,16 @@ const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
   title: { color: "#f8fafc", fontSize: 24, fontWeight: "700" },
   caption: { color: "#94a3b8", marginTop: 6, marginBottom: 16 },
+  selectionCard: {
+    backgroundColor: "#111827",
+    borderColor: "#1f2937",
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8
+  },
+  selectionLabel: { color: "#94a3b8", fontSize: 12, marginTop: 4 },
+  selectionValue: { color: "#f8fafc", fontSize: 16, fontWeight: "700", marginTop: 2 },
   label: { color: "#cbd5e1", marginBottom: 6, marginTop: 8 },
   input: {
     backgroundColor: "#1e293b",
@@ -112,9 +155,18 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 10
   },
+  disabled: { opacity: 0.7 },
+  error: { marginTop: 10, color: "#f87171", fontWeight: "600" },
   ctaText: { textAlign: "center", fontWeight: "700", color: "#052e16" },
   ghost: {
     marginTop: 12,
+    borderWidth: 1,
+    borderColor: "#334155",
+    paddingVertical: 12,
+    borderRadius: 10
+  },
+  resume: {
+    marginTop: 10,
     borderWidth: 1,
     borderColor: "#334155",
     paddingVertical: 12,

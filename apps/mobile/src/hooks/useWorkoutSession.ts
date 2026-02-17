@@ -1,83 +1,120 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
 import { StartSessionInput, UpdateProgressInput } from "@gym/shared";
-import { enqueue, getQueue, clearQueue } from "../services/offline-queue";
+import {
+  QueueItem,
+  createQueueItem,
+  enqueue,
+  getBackoffMs,
+  getQueue,
+  replaceQueue,
+  shouldRetryNow,
+  toShortErrorMessage
+} from "../services/offline-queue";
 import {
   finishWorkoutSession,
+  getActiveWorkoutSession,
   patchWorkoutProgress,
   startWorkoutSession
 } from "../services/api";
-import { ActiveSession, Pointer } from "../types";
+import { ActiveSession, Pointer, RoutineDay } from "../types";
 
 const SESSION_KEY = "@gym/active-session";
-const ACCESS_TOKEN = process.env.EXPO_PUBLIC_ACCESS_TOKEN ?? "demo-token";
 
-const fallbackSession: ActiveSession = {
-  id: "offline-demo",
-  current_pointer: { group_index: 0, exercise_index: 0, set_index: 0, round_index: 0 },
-  workout_groups: [
-    {
-      id: "wg-1",
-      type: "SUPERSET_2",
-      order_index: 0,
-      rounds_total: 3,
-      round_current: 1,
-      rest_between_exercises_seconds: 20,
-      rest_after_round_seconds: 90,
-      rest_after_set_seconds: 0,
-      workout_items: [
-        {
-          id: "we-a1",
-          order_in_group: "A1",
-          target_sets_total: 3,
-          rep_range: "8-10",
-          notes: "Tempo controlado",
-          sets: [
-            { id: "s1", set_number: 1, is_done: false },
-            { id: "s2", set_number: 2, is_done: false },
-            { id: "s3", set_number: 3, is_done: false }
-          ]
-        },
-        {
-          id: "we-a2",
-          order_in_group: "A2",
-          target_sets_total: 3,
-          rep_range: "10-12",
-          notes: "Sin balanceo",
-          sets: [
-            { id: "s4", set_number: 1, is_done: false },
-            { id: "s5", set_number: 2, is_done: false },
-            { id: "s6", set_number: 3, is_done: false }
-          ]
-        }
-      ]
-    }
-  ]
-};
+function generateEventId(): string {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = char === "x" ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+}
+
+function buildExerciseNameMap(day: RoutineDay): Record<string, string> {
+  return day.groups.reduce<Record<string, string>>((acc, group) => {
+    group.exercises.forEach((exercise) => {
+      acc[exercise.id] = exercise.exercise.name;
+    });
+    return acc;
+  }, {});
+}
+
+function hydrateSessionNames(
+  session: ActiveSession,
+  exerciseNamesBySourceId?: Record<string, string>
+): ActiveSession {
+  if (!exerciseNamesBySourceId) {
+    return session;
+  }
+  return {
+    ...session,
+    workout_groups: session.workout_groups.map((group) => ({
+      ...group,
+      workout_items: group.workout_items.map((item) => ({
+        ...item,
+        exercise_name: exerciseNamesBySourceId[item.source_group_exercise_id] ?? item.exercise_name
+      }))
+    }))
+  };
+}
 
 export function useWorkoutSession() {
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
   const [isOnline, setIsOnline] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isBooting, setIsBooting] = useState(true);
+  const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
+  const syncInFlightRef = useRef(false);
+
+  const pendingCount = useMemo(
+    () =>
+      queueItems.filter(
+        (event) => event.status === "pending" || event.status === "failed"
+      ).length,
+    [queueItems]
+  );
+
+  const queuePreview = useMemo(
+    () => queueItems.slice(-10).reverse(),
+    [queueItems]
+  );
 
   useEffect(() => {
-    AsyncStorage.getItem(SESSION_KEY).then((value) => {
+    (async () => {
+      const initialQueue = await getQueue();
+      setQueueItems(initialQueue);
+
+      const netState = await NetInfo.fetch();
+      setIsOnline(Boolean(netState.isConnected));
+
+      const value = await AsyncStorage.getItem(SESSION_KEY);
+      let localSession: ActiveSession | null = null;
       if (value) {
-        setActiveSession(JSON.parse(value) as ActiveSession);
+        localSession = JSON.parse(value) as ActiveSession;
+        setActiveSession(localSession);
       }
-    });
-  }, []);
 
-  useEffect(() => {
-    const subscription = NetInfo.addEventListener((state) => {
-      const online = Boolean(state.isConnected);
-      setIsOnline(online);
-      if (online) {
-        void flushQueue();
+      try {
+        const remoteActive = await getActiveWorkoutSession();
+        if (!localSession && remoteActive) {
+          setActiveSession(remoteActive);
+          await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(remoteActive));
+        }
+        // Conflict local vs API: prefer local while offline or while queue has pending events.
+        if (
+          localSession &&
+          remoteActive &&
+          Boolean(netState.isConnected) &&
+          initialQueue.length === 0
+        ) {
+          setActiveSession(remoteActive);
+          await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(remoteActive));
+        }
+      } catch {
+        // Ignore boot fetch errors (offline/expired token).
       }
-    });
-    return () => subscription();
+      setIsBooting(false);
+    })();
   }, []);
 
   const persistSession = useCallback(async (session: ActiveSession | null) => {
@@ -89,20 +126,36 @@ export function useWorkoutSession() {
   }, []);
 
   const startSession = useCallback(
-    async (payload: StartSessionInput) => {
-      let nextSession: ActiveSession;
-      try {
-        const remoteSession = await startWorkoutSession(payload, ACCESS_TOKEN);
-        nextSession = remoteSession as ActiveSession;
-      } catch {
-        // Sprint 1 fallback: permite probar guided mode incluso sin API disponible.
-        nextSession = fallbackSession;
-      }
-
+    async (payload: StartSessionInput, selectedDay: RoutineDay) => {
+      const remoteSession = await startWorkoutSession(payload);
+      const nextSession = hydrateSessionNames(
+        remoteSession,
+        buildExerciseNameMap(selectedDay)
+      );
       setActiveSession(nextSession);
       await persistSession(nextSession);
     },
     [persistSession]
+  );
+
+  const syncQueueState = useCallback(async () => {
+    const next = await getQueue();
+    setQueueItems(next);
+    return next;
+  }, []);
+
+  const persistQueueState = useCallback(async (next: QueueItem[]) => {
+    await replaceQueue(next);
+    setQueueItems(next);
+  }, []);
+
+  const enqueueProgress = useCallback(
+    async (payload: UpdateProgressInput) => {
+      const item = createQueueItem(payload, payload.event_id ?? generateEventId());
+      await enqueue(item);
+      await syncQueueState();
+    },
+    [syncQueueState]
   );
 
   const savePointer = useCallback(
@@ -114,18 +167,23 @@ export function useWorkoutSession() {
       setActiveSession(next);
       await persistSession(next);
 
-      const payload: UpdateProgressInput = { current_pointer: pointer };
+      const payload: UpdateProgressInput = {
+        event_id: generateEventId(),
+        current_pointer: pointer
+      };
       if (isOnline) {
         try {
-          await patchWorkoutProgress(payload, ACCESS_TOKEN);
+          const updated = await patchWorkoutProgress(payload);
+          setActiveSession(updated);
+          await persistSession(updated);
         } catch {
-          await enqueue({ type: "PATCH_PROGRESS", payload });
+          await enqueueProgress(payload);
         }
       } else {
-        await enqueue({ type: "PATCH_PROGRESS", payload });
+        await enqueueProgress(payload);
       }
     },
-    [activeSession, isOnline, persistSession]
+    [activeSession, enqueueProgress, isOnline, persistSession]
   );
 
   const saveSet = useCallback(
@@ -163,18 +221,23 @@ export function useWorkoutSession() {
       setActiveSession(next);
       await persistSession(next);
 
-      const payload: UpdateProgressInput = { set_update: setPayload };
+      const payload: UpdateProgressInput = {
+        event_id: generateEventId(),
+        set_update: setPayload
+      };
       if (isOnline) {
         try {
-          await patchWorkoutProgress(payload, ACCESS_TOKEN);
+          const updated = await patchWorkoutProgress(payload);
+          setActiveSession(updated);
+          await persistSession(updated);
         } catch {
-          await enqueue({ type: "PATCH_PROGRESS", payload });
+          await enqueueProgress(payload);
         }
       } else {
-        await enqueue({ type: "PATCH_PROGRESS", payload });
+        await enqueueProgress(payload);
       }
     },
-    [activeSession, isOnline, persistSession]
+    [activeSession, enqueueProgress, isOnline, persistSession]
   );
 
   const finishSession = useCallback(async () => {
@@ -182,7 +245,7 @@ export function useWorkoutSession() {
       return;
     }
     try {
-      await finishWorkoutSession(activeSession.id, ACCESS_TOKEN);
+      await finishWorkoutSession(activeSession.id);
     } catch {
       // No-op: si está offline, ya queda localmente terminada.
     }
@@ -190,30 +253,173 @@ export function useWorkoutSession() {
     await persistSession(null);
   }, [activeSession, persistSession]);
 
-  const flushQueue = useCallback(async () => {
-    setIsSyncing(true);
-    try {
-      const queue = await getQueue();
-      for (const item of queue) {
-        if (item.type === "PATCH_PROGRESS") {
-          await patchWorkoutProgress(item.payload as UpdateProgressInput, ACCESS_TOKEN);
-        }
+  const resetLocalSession = useCallback(async () => {
+    setActiveSession(null);
+    await persistSession(null);
+  }, [persistSession]);
+
+  const flushQueue = useCallback(
+    async ({
+      onlyFailed = false,
+      ignoreBackoff = false
+    }: {
+      onlyFailed?: boolean;
+      ignoreBackoff?: boolean;
+    } = {}) => {
+      if (!isOnline || syncInFlightRef.current) {
+        return;
       }
-      await clearQueue();
-    } catch {
-      // Mantener cola intacta ante fallo de red/intermitencia.
-    } finally {
-      setIsSyncing(false);
+      syncInFlightRef.current = true;
+      setIsSyncing(true);
+      try {
+        const queue = await syncQueueState();
+        if (queue.length === 0) {
+          return;
+        }
+
+        const working = [...queue];
+        let lastSnapshot: ActiveSession | null = null;
+        const now = Date.now();
+
+        for (let i = 0; i < working.length; i += 1) {
+          const item = working[i];
+          if (item.type !== "PATCH_PROGRESS") {
+            continue;
+          }
+          if (onlyFailed && item.status !== "failed") {
+            continue;
+          }
+          if (!onlyFailed && item.status !== "pending" && item.status !== "failed") {
+            continue;
+          }
+          if (!shouldRetryNow(item, now, ignoreBackoff)) {
+            continue;
+          }
+
+          const sendingItem: QueueItem = {
+            ...item,
+            status: "sending",
+            updated_at: new Date().toISOString(),
+            last_error: undefined
+          };
+          working[i] = sendingItem;
+          await persistQueueState(working);
+
+          try {
+            const snapshot = await patchWorkoutProgress(item.payload);
+            lastSnapshot = snapshot;
+            // acked -> remove from persisted queue
+            working.splice(i, 1);
+            i -= 1;
+            await persistQueueState(working);
+          } catch (error) {
+            const attempts = item.attempts + 1;
+            const failedItem: QueueItem = {
+              ...item,
+              status: "failed",
+              attempts,
+              last_error: toShortErrorMessage(error),
+              updated_at: new Date().toISOString(),
+              next_retry_at: new Date(Date.now() + getBackoffMs(attempts)).toISOString()
+            };
+            working[i] = failedItem;
+            await persistQueueState(working);
+          }
+        }
+
+        if (lastSnapshot) {
+          setActiveSession(lastSnapshot);
+          await persistSession(lastSnapshot);
+        }
+      } catch {
+        // Mantener cola intacta ante fallo de red/intermitencia.
+      } finally {
+        syncInFlightRef.current = false;
+        setIsSyncing(false);
+      }
+    },
+    [isOnline, persistQueueState, persistSession, syncQueueState]
+  );
+
+  const reconcileWithServer = useCallback(async () => {
+    if (!isOnline) {
+      return;
     }
-  }, []);
+    const queue = await syncQueueState();
+    if (queue.length > 0) {
+      // Prefer local while pending events exist.
+      return;
+    }
+    try {
+      const remoteActive = await getActiveWorkoutSession();
+      if (!remoteActive) {
+        return;
+      }
+      setActiveSession((current) => {
+        if (!current) {
+          void persistSession(remoteActive);
+          return remoteActive;
+        }
+        const currentStr = JSON.stringify(current);
+        const remoteStr = JSON.stringify(remoteActive);
+        if (currentStr !== remoteStr) {
+          void persistSession(remoteActive);
+          return remoteActive;
+        }
+        return current;
+      });
+    } catch {
+      // Keep local if server unavailable.
+    }
+  }, [isOnline, persistSession, syncQueueState]);
+
+  useEffect(() => {
+    const subscription = NetInfo.addEventListener((state) => {
+      const online = Boolean(state.isConnected);
+      setIsOnline(online);
+      if (online) {
+        void (async () => {
+          await flushQueue({ ignoreBackoff: true });
+          await reconcileWithServer();
+        })();
+      }
+    });
+    return () => subscription();
+  }, [flushQueue, reconcileWithServer]);
+
+  useEffect(() => {
+    if (!isOnline || queueItems.length === 0) {
+      return;
+    }
+    const timer = setInterval(() => {
+      void flushQueue();
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [flushQueue, isOnline, queueItems.length]);
+
+  const forceSync = useCallback(async () => {
+    await flushQueue({ ignoreBackoff: true });
+    await reconcileWithServer();
+  }, [flushQueue, reconcileWithServer]);
+
+  const retryFailed = useCallback(async () => {
+    await flushQueue({ onlyFailed: true, ignoreBackoff: true });
+    await reconcileWithServer();
+  }, [flushQueue, reconcileWithServer]);
 
   return {
     activeSession,
+    isBooting,
     isOnline,
     isSyncing,
+    pendingCount,
+    queuePreview,
     startSession,
     saveSet,
     savePointer,
-    finishSession
+    finishSession,
+    resetLocalSession,
+    forceSync,
+    retryFailed
   };
 }

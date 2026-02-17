@@ -13,6 +13,7 @@ export const startSessionSchema = z.object({
 });
 
 export const updateProgressSchema = z.object({
+  event_id: z.string().uuid().optional(),
   current_pointer: z
     .object({
       group_index: z.number().int().nonnegative(),

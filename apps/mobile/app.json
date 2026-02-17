@@ -8,8 +8,7 @@
     "plugins": ["expo-notifications"],
     "ios": { "supportsTablet": true },
     "android": {
-      "adaptiveIcon": { "backgroundColor": "#111827" },
-      "useNextNotificationsApi": true
+      "adaptiveIcon": { "backgroundColor": "#111827" }
     }
   }
 }
