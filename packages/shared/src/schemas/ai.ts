@@ -18,6 +18,8 @@ export const aiRecommendationRequestSchema = z.object({
 });
 
 export const aiRecommendationResponseSchema = z.object({
+  model_version: z.string(),
+  strategy_version: z.string(),
   safe_mode: z.boolean(),
   safety_flags: z.array(z.string()),
   disclaimer: z.string(),
