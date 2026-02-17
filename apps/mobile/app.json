@@ -5,13 +5,11 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "assetBundlePatterns": ["**/*"],
-    "ios": {
-      "supportsTablet": true
-    },
+    "plugins": ["expo-notifications"],
+    "ios": { "supportsTablet": true },
     "android": {
-      "adaptiveIcon": {
-        "backgroundColor": "#111827"
-      }
+      "adaptiveIcon": { "backgroundColor": "#111827" },
+      "useNextNotificationsApi": true
     }
   }
 }
