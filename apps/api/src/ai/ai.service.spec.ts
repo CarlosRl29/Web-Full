@@ -1,9 +1,14 @@
-import { ForbiddenException, ServiceUnavailableException } from "@nestjs/common";
+import {
+  ForbiddenException,
+  HttpException,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { UserRole } from "@prisma/client";
 import { AiService } from "./ai.service";
 
 describe("AiService", () => {
   const actorUser = { sub: "user-1", role: UserRole.USER, email: "user@test.dev" };
+  const actorUserTwo = { sub: "user-2", role: UserRole.USER, email: "user2@test.dev" };
   const actorCoach = { sub: "coach-1", role: UserRole.COACH, email: "coach@test.dev" };
   const actorAdmin = { sub: "admin-1", role: UserRole.ADMIN, email: "admin@test.dev" };
 
@@ -185,6 +190,7 @@ describe("AiService", () => {
     expect(prisma.aiRecommendationLog.create).toHaveBeenCalledTimes(1);
     expect(response.model_version).toBeTruthy();
     expect(response.strategy_version).toBe("3.3.0");
+    expect(response.dedup_hit).toBe(false);
     expect(response.plan_suggestions.length).toBeGreaterThan(0);
     delete process.env.AI_ENABLED;
   });
@@ -307,7 +313,21 @@ describe("AiService", () => {
         },
         actorUser
       )
-    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+    ).rejects.toMatchObject({ status: 429 });
+
+    await expect(
+      service.getRecommendations(
+        {
+          profile: {
+            experience_level: "INTERMEDIATE",
+            goal: "HYPERTROPHY",
+            days_per_week: 4
+          },
+          context: { window_days: 28 }
+        },
+        actorUser
+      )
+    ).rejects.toBeInstanceOf(HttpException);
 
     expect(prisma.aiRecommendationLog.create).not.toHaveBeenCalled();
     delete process.env.AI_ENABLED;
@@ -370,9 +390,64 @@ describe("AiService", () => {
     );
 
     expect(response.recommendation_summary).toBe("cached result");
+    expect(response.dedup_hit).toBe(true);
     expect(prisma.aiRecommendationLog.create).not.toHaveBeenCalled();
 
     (service as any).buildRequestHash = originalHashFn;
+    delete process.env.AI_ENABLED;
+    delete process.env.AI_RATE_LIMIT_PER_DAY;
+    delete process.env.AI_DEDUP_WINDOW_HOURS;
+  });
+
+  it("marks dedup_hit false then true for repeated same-user request", async () => {
+    process.env.AI_ENABLED = "true";
+    process.env.AI_RATE_LIMIT_PER_DAY = "10";
+    process.env.AI_DEDUP_WINDOW_HOURS = "6";
+    const { service, prisma } = buildService();
+
+    const payload = {
+      profile: {
+        experience_level: "INTERMEDIATE" as const,
+        goal: "HYPERTROPHY" as const,
+        days_per_week: 4
+      },
+      context: { window_days: 28 }
+    };
+
+    const first = await service.getRecommendations(payload, actorUser);
+    const second = await service.getRecommendations(payload, actorUser);
+
+    expect(first.dedup_hit).toBe(false);
+    expect(second.dedup_hit).toBe(true);
+    expect(prisma.aiRecommendationLog.create).toHaveBeenCalledTimes(1);
+
+    delete process.env.AI_ENABLED;
+    delete process.env.AI_RATE_LIMIT_PER_DAY;
+    delete process.env.AI_DEDUP_WINDOW_HOURS;
+  });
+
+  it("does not share dedup cache across different users", async () => {
+    process.env.AI_ENABLED = "true";
+    process.env.AI_RATE_LIMIT_PER_DAY = "10";
+    process.env.AI_DEDUP_WINDOW_HOURS = "6";
+    const { service, prisma } = buildService();
+
+    const payload = {
+      profile: {
+        experience_level: "INTERMEDIATE" as const,
+        goal: "HYPERTROPHY" as const,
+        days_per_week: 4
+      },
+      context: { window_days: 28 }
+    };
+
+    const firstUser = await service.getRecommendations(payload, actorUser);
+    const secondUser = await service.getRecommendations(payload, actorUserTwo);
+
+    expect(firstUser.dedup_hit).toBe(false);
+    expect(secondUser.dedup_hit).toBe(false);
+    expect(prisma.aiRecommendationLog.create).toHaveBeenCalledTimes(2);
+
     delete process.env.AI_ENABLED;
     delete process.env.AI_RATE_LIMIT_PER_DAY;
     delete process.env.AI_DEDUP_WINDOW_HOURS;

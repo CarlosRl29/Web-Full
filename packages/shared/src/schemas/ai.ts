@@ -34,6 +34,7 @@ export const aiPlanSuggestionSchema = z.object({
 export const aiRecommendationResponseSchema = z.object({
   model_version: z.string(),
   strategy_version: z.string(),
+  dedup_hit: z.boolean(),
   safe_mode: z.boolean(),
   safety_flags: z.array(z.string()),
   rationale: z.array(z.string()),

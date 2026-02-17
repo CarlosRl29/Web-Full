@@ -1,4 +1,11 @@
-import { ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
+import {
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import {
   AiPlanSuggestion,
   AiRecommendationRequest,
@@ -243,7 +250,11 @@ export class AiService {
       orderBy: { created_at: "desc" }
     });
     if (cached?.response_payload) {
-      return cached.response_payload as unknown as AiRecommendationResponse;
+      const cachedPayload = cached.response_payload as unknown as AiRecommendationResponse;
+      return {
+        ...cachedPayload,
+        dedup_hit: true
+      };
     }
 
     const dailySince = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -254,7 +265,27 @@ export class AiService {
       }
     });
     if (usedInWindow >= this.getRateLimitPerDay()) {
-      throw new ServiceUnavailableException("AI rate limit exceeded");
+      const oldestLog = await this.prisma.aiRecommendationLog.findFirst({
+        where: {
+          user_id: actor.sub,
+          created_at: { gte: dailySince }
+        },
+        orderBy: { created_at: "asc" },
+        select: { created_at: true }
+      });
+      const retryAfterSeconds = oldestLog
+        ? Math.max(
+            1,
+            Math.ceil(
+              (oldestLog.created_at.getTime() + 24 * 60 * 60 * 1000 - Date.now()) / 1000
+            )
+          )
+        : 60;
+
+      throw new HttpException({
+        message: "AI rate limit exceeded",
+        retry_after_seconds: retryAfterSeconds
+      }, HttpStatus.TOO_MANY_REQUESTS);
     }
 
     const safety_flags: string[] = [];
@@ -265,6 +296,7 @@ export class AiService {
       response = {
         model_version: MODEL_VERSION,
         strategy_version: STRATEGY_VERSION,
+        dedup_hit: false,
         safe_mode: true,
         safety_flags,
         rationale: [
@@ -329,6 +361,7 @@ export class AiService {
       response = {
         model_version: MODEL_VERSION,
         strategy_version: STRATEGY_VERSION,
+        dedup_hit: false,
         safe_mode: false,
         safety_flags,
         rationale: [

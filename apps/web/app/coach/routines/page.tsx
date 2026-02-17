@@ -11,6 +11,13 @@ import { apiRequest } from "../../../lib/api";
 import { useCoachAuth } from "../../../lib/useCoachAuth";
 import { AiPlanSuggestion, AiRecommendationResponse } from "@gym/shared";
 
+const ORDER_BY_TYPE: Record<"SINGLE" | "SUPERSET_2" | "SUPERSET_3", Array<"A1" | "A2" | "A3">> =
+  {
+    SINGLE: ["A1"],
+    SUPERSET_2: ["A1", "A2"],
+    SUPERSET_3: ["A1", "A2", "A3"]
+  };
+
 export default function CoachRoutinesPage() {
   const { token, loading } = useCoachAuth();
   const [routines, setRoutines] = useState<any[]>([]);
@@ -130,18 +137,76 @@ export default function CoachRoutinesPage() {
     }
   };
 
-  const nextExerciseId = (currentId: string): string => {
+  const nextExerciseId = (currentId: string): string | null => {
     if (exercises.length === 0) {
-      return currentId;
+      return null;
     }
     const idx = exercises.findIndex((item) => item.id === currentId);
     if (idx < 0) {
-      return exercises[0].id;
+      return null;
     }
     return exercises[(idx + 1) % exercises.length].id;
   };
 
+  const validateApplySuggestion = (suggestion: AiPlanSuggestion): string | null => {
+    const existingExerciseIds = new Set(exercises.map((item) => item.id));
+    for (const group of draft.groups) {
+      const allowedOrders = ORDER_BY_TYPE[group.type];
+      if (
+        group.exercises.length !== allowedOrders.length ||
+        group.exercises.some((exercise) => !allowedOrders.includes(exercise.order_in_group))
+      ) {
+        return `Estructura invalida del grupo ${group.type}.`;
+      }
+    }
+
+    if (suggestion.swap_strategy === "NEXT_AVAILABLE") {
+      if (!suggestion.swap_order_in_group) {
+        return "Sugerencia invalida: falta slot de swap.";
+      }
+      if (existingExerciseIds.size === 0) {
+        return "No hay ejercicios disponibles para aplicar swap.";
+      }
+      for (const group of draft.groups) {
+        if (suggestion.apply_scope === "SINGLE_GROUPS" && group.type !== "SINGLE") {
+          continue;
+        }
+        const allowedOrders = ORDER_BY_TYPE[group.type];
+        if (!allowedOrders.includes(suggestion.swap_order_in_group)) {
+          return `El slot ${suggestion.swap_order_in_group} no aplica para ${group.type}.`;
+        }
+        const target = group.exercises.find(
+          (exercise) => exercise.order_in_group === suggestion.swap_order_in_group
+        );
+        if (!target || !existingExerciseIds.has(target.exercise_id)) {
+          return "No se puede hacer swap: ejercicio objetivo invalido o inexistente.";
+        }
+      }
+    }
+
+    for (const group of draft.groups) {
+      if (suggestion.apply_scope === "SINGLE_GROUPS" && group.type !== "SINGLE") {
+        continue;
+      }
+      for (const exercise of group.exercises) {
+        const nextMin = Math.max(1, exercise.rep_range_min + suggestion.rep_min_delta);
+        const nextMax = exercise.rep_range_max + suggestion.rep_max_delta;
+        if (nextMax < nextMin) {
+          return "Rango de repeticiones invalido: max debe ser mayor o igual a min.";
+        }
+      }
+    }
+
+    return null;
+  };
+
   const applySuggestion = (suggestion: AiPlanSuggestion) => {
+    const validationError = validateApplySuggestion(suggestion);
+    if (validationError) {
+      setMessage(validationError);
+      return;
+    }
+
     const nextGroups = draft.groups.map((group) => {
       if (suggestion.apply_scope === "SINGLE_GROUPS" && group.type !== "SINGLE") {
         return group;
@@ -162,9 +227,13 @@ export default function CoachRoutinesPage() {
           suggestion.swap_order_in_group &&
           exercise.order_in_group === suggestion.swap_order_in_group
         ) {
+          const swappedExerciseId = nextExerciseId(exercise.exercise_id);
+          if (!swappedExerciseId) {
+            return updated;
+          }
           updated = {
             ...updated,
-            exercise_id: nextExerciseId(exercise.exercise_id)
+            exercise_id: swappedExerciseId
           };
         }
         return updated;
@@ -255,6 +324,9 @@ export default function CoachRoutinesPage() {
               <p style={{ color: "#b45309", fontWeight: 700 }}>
                 Safety flags: {aiData.safety_flags.join(", ")}
               </p>
+            ) : null}
+            {aiData.dedup_hit ? (
+              <p style={{ color: "#065f46", fontWeight: 700 }}>Cacheado (dedup)</p>
             ) : null}
             <p style={{ margin: "8px 0" }}>{aiData.recommendation_summary}</p>
             <ul>
