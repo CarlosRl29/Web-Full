@@ -73,7 +73,7 @@ export default function UserRoutinesPage() {
           entrenar.
         </p>
         <div className="axion-actions" style={{ marginTop: 14 }}>
-          <Link className="axion-button axion-button-primary" href="/app/routines/new">
+          <Link className="axion-button axion-button-primary" href="/app/routines/builder">
             Crear rutina
           </Link>
           <Link className="axion-button axion-button-secondary" href="/marketplace">
@@ -90,7 +90,7 @@ export default function UserRoutinesPage() {
             <strong>Aún no tienes rutinas propias</strong>
             <p>Crea una rutina o guarda una desde marketplace para comenzar.</p>
             <div style={{ marginTop: 12 }}>
-              <Link className="axion-button axion-button-primary" href="/app/routines/new">
+              <Link className="axion-button axion-button-primary" href="/app/routines/builder">
                 Crear rutina
               </Link>
             </div>
