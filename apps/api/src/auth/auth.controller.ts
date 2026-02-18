@@ -1,5 +1,11 @@
-import { Body, Controller, Get, Post, UsePipes } from "@nestjs/common";
-import { loginSchema, refreshSchema, registerSchema } from "@gym/shared";
+import { Body, Controller, Get, Patch, Post, UsePipes } from "@nestjs/common";
+import {
+  loginSchema,
+  refreshSchema,
+  registerSchema,
+  updateModeSchema,
+  updateProfileSchema
+} from "@gym/shared";
 import { AuthService } from "./auth.service";
 import { CurrentUser } from "../common/current-user.decorator";
 import { Public } from "../common/public.decorator";
@@ -35,5 +41,17 @@ export class AuthController {
   @Get("me")
   me(@CurrentUser() user: AuthUser) {
     return this.authService.me(user.sub);
+  }
+
+  @Patch("me/profile")
+  @UsePipes(new ZodValidationPipe(updateProfileSchema))
+  updateProfile(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    return this.authService.updateProfile(user.sub, body as never);
+  }
+
+  @Patch("me/mode")
+  @UsePipes(new ZodValidationPipe(updateModeSchema))
+  updateMode(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    return this.authService.updateMode(user.sub, body as never);
   }
 }

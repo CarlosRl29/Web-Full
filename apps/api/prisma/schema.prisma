@@ -13,6 +13,23 @@ enum UserRole {
   ADMIN
 }
 
+enum UserMode {
+  USER
+  COACH
+}
+
+enum TrainingGoal {
+  STRENGTH
+  HYPERTROPHY
+  MIXED
+}
+
+enum ExperienceLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
 enum ExerciseGroupType {
   SINGLE
   SUPERSET_2
@@ -31,12 +48,25 @@ model User {
   password_hash      String
   full_name          String
   role               UserRole         @default(USER)
+  preferred_modes    UserMode[]       @default([USER])
+  active_mode        UserMode         @default(USER)
+  goal               TrainingGoal?
+  experience_level   ExperienceLevel?
+  days_per_week      Int?
+  session_minutes    Int?
+  injuries           String?
+  equipment          String[]         @default([])
+  active_routine_id  String?
+  active_routine     Routine?         @relation("ActiveRoutine", fields: [active_routine_id], references: [id], onDelete: SetNull)
   refresh_token_hash String?
   created_exercises  Exercise[]
-  routines           Routine[]
+  routines           Routine[]         @relation("OwnedRoutines")
   workout_sessions   WorkoutSession[]
   coached_assignments  RoutineAssignment[]  @relation("CoachAssignments")
   user_assignments     RoutineAssignment[]  @relation("UserAssignments")
+  routine_reviews      RoutineReview[]
+  following_coaches    CoachFollow[]        @relation("UserFollowsCoach")
+  coach_followers      CoachFollow[]        @relation("CoachFollowedByUsers")
   ai_recommendation_logs AiRecommendationLog[] @relation("AiRecommendationUser")
   ai_coach_logs          AiRecommendationLog[] @relation("AiRecommendationCoach")
   ai_applied_suggestions AiAppliedSuggestion[] @relation("AiAppliedByUser")
@@ -60,15 +90,57 @@ model Exercise {
 model Routine {
   id          String           @id @default(uuid())
   owner_id    String
-  owner       User             @relation(fields: [owner_id], references: [id])
+  owner       User             @relation("OwnedRoutines", fields: [owner_id], references: [id])
   name        String
   description String?
+  is_public   Boolean          @default(false)
+  published_at DateTime?
+  marketplace_title String?
+  marketplace_goal  String?
+  marketplace_level String?
+  marketplace_days_per_week Int?
+  marketplace_duration_weeks Int?
+  marketplace_description String?
+  marketplace_tags String[]           @default([])
+  rating_average Float         @default(0)
+  rating_count   Int           @default(0)
   days        RoutineDay[]
   sessions    WorkoutSession[]
   assignments RoutineAssignment[]
+  active_for_users User[]      @relation("ActiveRoutine")
+  reviews     RoutineReview[]
   ai_applied_suggestions AiAppliedSuggestion[]
   created_at  DateTime         @default(now())
   updated_at  DateTime         @updatedAt
+
+  @@index([is_public, published_at])
+}
+
+model RoutineReview {
+  id          String   @id @default(uuid())
+  routine_id  String
+  routine     Routine  @relation(fields: [routine_id], references: [id], onDelete: Cascade)
+  user_id     String
+  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  rating      Int
+  review      String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@unique([routine_id, user_id])
+  @@index([routine_id, created_at])
+}
+
+model CoachFollow {
+  id          String   @id @default(uuid())
+  user_id     String
+  user        User     @relation("UserFollowsCoach", fields: [user_id], references: [id], onDelete: Cascade)
+  coach_id    String
+  coach       User     @relation("CoachFollowedByUsers", fields: [coach_id], references: [id], onDelete: Cascade)
+  created_at  DateTime @default(now())
+
+  @@unique([user_id, coach_id])
+  @@index([coach_id, created_at])
 }
 
 model RoutineDay {

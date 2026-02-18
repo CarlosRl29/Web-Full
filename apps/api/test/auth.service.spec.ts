@@ -27,7 +27,8 @@ describe("AuthService", () => {
     const result = await service.register({
       email: "user@test.com",
       full_name: "User",
-      password: "StrongPass1"
+      password: "StrongPass1",
+      intended_mode: "USER"
     });
 
     expect(result.access_token).toBe("token");
@@ -52,7 +53,8 @@ describe("AuthService", () => {
       service.register({
         email: "existing@test.com",
         full_name: "Existing",
-        password: "StrongPass1"
+        password: "StrongPass1",
+        intended_mode: "USER"
       })
     ).rejects.toBeInstanceOf(ConflictException);
   });

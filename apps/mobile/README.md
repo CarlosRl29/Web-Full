@@ -19,7 +19,7 @@ EXPO_PUBLIC_API_URL=http://<IP_DE_MI_PC>:3001/api
 ## Idempotencia de progress
 
 - Cada PATCH de progreso incluye `event_id` (uuid v4 generado en mobile).
-- Backend guarda `processed_event_ids` por sesion activa.
+- Backend persiste eventos en `WorkoutProcessedEvent` por sesion activa.
 - Si llega un `event_id` repetido, devuelve snapshot actual sin reaplicar cambios.
 
 ## Observabilidad en UI
@@ -88,7 +88,14 @@ Al abrir app:
 5. Tocar `Reintentar failed` o `Forzar sync`.
 6. Validar `sending -> acked` y cola vacia.
 
-## Nota de backend (idempotencia)
+## Contratos listos para mobile parity (User Portal + Marketplace)
 
-El backend crea (si no existe) una tabla simple `workout_processed_events` y usa
-`INSERT ... ON CONFLICT DO NOTHING` para ignorar duplicados por `(session_id, event_id)`.
+Los siguientes endpoints ya quedan disponibles para consumo mobile:
+
+- `GET /routines/owned`: rutinas propias del usuario.
+- `GET /routines/assigned`: rutinas asignadas activas (solo lectura).
+- `GET /routines/active` y `PATCH /routines/active`: leer/cambiar rutina activa de entrenamiento.
+- `GET /routines/marketplace` y `GET /routines/marketplace/:id`: explorar marketplace.
+- `POST /routines/:id/clone`: clonar rutina publica a la cuenta del usuario.
+- `POST /routines/:id/reviews`: rating (1-5) + review corta.
+- `POST /routines/:id/follow`: seguir al coach autor de una rutina publica.

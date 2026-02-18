@@ -54,6 +54,34 @@ export const createRoutineAssignmentSchema = z.object({
   coach_notes: z.string().max(1000).optional()
 });
 
+export const setActiveRoutineSchema = z.object({
+  routine_id: z.string().uuid()
+});
+
+export const publishRoutineSchema = z.object({
+  is_public: z.boolean(),
+  marketplace_title: z.string().min(2),
+  marketplace_goal: z.string().min(2),
+  marketplace_level: z.string().min(2),
+  marketplace_days_per_week: z.number().int().min(1).max(7),
+  marketplace_duration_weeks: z.number().int().min(1).max(52).optional(),
+  marketplace_description: z.string().min(4).max(2000),
+  marketplace_tags: z.array(z.string().min(1)).max(12).default([])
+});
+
+export const createRoutineReviewSchema = z.object({
+  rating: z.number().int().min(1).max(5),
+  review: z.string().max(400).optional()
+});
+
+export const followCoachSchema = z.object({
+  coach_id: z.string().uuid()
+});
+
 export type CreateRoutineInput = z.infer<typeof createRoutineSchema>;
 export type SaveRoutineDayStructureInput = z.infer<typeof saveRoutineDayStructureSchema>;
 export type CreateRoutineAssignmentInput = z.infer<typeof createRoutineAssignmentSchema>;
+export type SetActiveRoutineInput = z.infer<typeof setActiveRoutineSchema>;
+export type PublishRoutineInput = z.infer<typeof publishRoutineSchema>;
+export type CreateRoutineReviewInput = z.infer<typeof createRoutineReviewSchema>;
+export type FollowCoachInput = z.infer<typeof followCoachSchema>;
