@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { clearTokens } from "../lib/api";
+import { useUnsavedChanges } from "./UnsavedChangesProvider";
 
 export function CoachNav() {
   const pathname = usePathname();
+  const { confirmNavigation } = useUnsavedChanges();
   const items = [
     { href: "/login", label: "Inicio" },
     { href: "/coach/routines", label: "Rutinas" },
@@ -30,6 +32,11 @@ export function CoachNav() {
                 href={item.href}
                 className={`axion-nav-link${isActive ? " is-active" : ""}`}
                 aria-current={isActive ? "page" : undefined}
+                onClick={(event) => {
+                  if (!confirmNavigation()) {
+                    event.preventDefault();
+                  }
+                }}
               >
                 {item.label}
               </Link>
@@ -44,6 +51,9 @@ export function CoachNav() {
           <button
             className="axion-button axion-button-secondary"
             onClick={() => {
+              if (!confirmNavigation()) {
+                return;
+              }
               clearTokens();
               window.location.href = "/login";
             }}

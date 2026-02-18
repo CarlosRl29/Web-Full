@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import { apiRequest } from "../../../lib/api";
 import { useCoachAuth } from "../../../lib/useCoachAuth";
+import { useToast } from "../../../components/ToastProvider";
 
 export default function CoachAssignmentsPage() {
   const { token, loading } = useCoachAuth();
+  const { showToast } = useToast();
   const [users, setUsers] = useState<Array<{ id: string; full_name: string; email: string }>>([]);
   const [routines, setRoutines] = useState<Array<{ id: string; name: string }>>([]);
   const [assignments, setAssignments] = useState<any[]>([]);
@@ -55,9 +57,11 @@ export default function CoachAssignmentsPage() {
       }, token);
       setCoachNotes("");
       setMessage("Rutina asignada.");
+      showToast("success", "Asignacion creada correctamente.");
       await loadData(token);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "No se pudo asignar rutina");
+      showToast("error", "No se pudo crear la asignacion.");
     }
   };
 
@@ -102,24 +106,36 @@ export default function CoachAssignmentsPage() {
       </div>
 
       <h3 style={{ marginTop: 24 }}>Clientes y asignaciones</h3>
-      <table className="axion-table">
-        <thead>
-          <tr>
-            <th>Cliente</th>
-            <th>Rutina</th>
-            <th>Estado</th>
-          </tr>
-        </thead>
-        <tbody>
-          {assignments.map((assignment) => (
-            <tr key={assignment.id}>
-              <td>{assignment.user?.full_name ?? assignment.user_name}</td>
-              <td>{assignment.routine?.name ?? assignment.routine_name}</td>
-              <td>{assignment.is_active ? "activa" : "inactiva"}</td>
+      {assignments.length === 0 ? (
+        <div className="axion-empty">
+          <strong>Aun no hay asignaciones</strong>
+          <p>Asigna una rutina para comenzar a gestionar clientes.</p>
+          <div style={{ marginTop: 16 }}>
+            <button className="axion-button axion-button-primary" onClick={() => void assignRoutine()}>
+              Asignar rutina
+            </button>
+          </div>
+        </div>
+      ) : (
+        <table className="axion-table">
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Rutina</th>
+              <th>Estado</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {assignments.map((assignment) => (
+              <tr key={assignment.id}>
+                <td>{assignment.user?.full_name ?? assignment.user_name}</td>
+                <td>{assignment.routine?.name ?? assignment.routine_name}</td>
+                <td>{assignment.is_active ? "activa" : "inactiva"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
       </section>
     </section>
   );

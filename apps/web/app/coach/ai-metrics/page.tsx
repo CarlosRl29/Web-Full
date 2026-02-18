@@ -59,7 +59,7 @@ export default function CoachAiMetricsPage() {
           style={{ marginLeft: 8 }}
         />
       </label>
-      {data ? (
+      {data && data.total > 0 ? (
         <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(4, minmax(120px, 1fr))", marginTop: 14 }}>
           <article className="axion-card" style={{ padding: 10 }}>
             <strong>Total</strong>
@@ -78,7 +78,12 @@ export default function CoachAiMetricsPage() {
             <p>{data.dedup_savings_pct}%</p>
           </article>
         </div>
-      ) : null}
+      ) : (
+        <div className="axion-empty" style={{ marginTop: 14 }}>
+          <strong>Aun sin datos</strong>
+          <p>Cuando existan recomendaciones AI, veras aqui las metricas operativas.</p>
+        </div>
+      )}
       </section>
     </section>
   );

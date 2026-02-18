@@ -63,28 +63,35 @@ export default function CoachAiAlertsPage() {
         />
       </label>
       <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
-        {alerts.map((alert) => (
-          <article
-            key={alert.id}
-            className="axion-card"
-            style={{
-              background:
-                alert.severity === "high"
-                  ? "rgba(239, 68, 68, 0.24)"
-                  : alert.severity === "medium"
-                    ? "rgba(239, 68, 68, 0.12)"
-                    : "rgba(59, 130, 246, 0.12)"
-            }}
-          >
-            <strong>
-              [{alert.severity.toUpperCase()}] {alert.title}
-            </strong>
-            <p>{alert.description}</p>
-            <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>
-              {JSON.stringify(alert.metrics, null, 2)}
-            </pre>
-          </article>
-        ))}
+        {alerts.length === 0 || alerts.every((alert) => alert.id === "no-alerts") ? (
+          <div className="axion-empty">
+            <strong>Todo en orden</strong>
+            <p>No hay alertas operativas relevantes en esta ventana.</p>
+          </div>
+        ) : (
+          alerts.map((alert) => (
+            <article
+              key={alert.id}
+              className="axion-card"
+              style={{
+                background:
+                  alert.severity === "high"
+                    ? "rgba(239, 68, 68, 0.24)"
+                    : alert.severity === "medium"
+                      ? "rgba(239, 68, 68, 0.12)"
+                      : "rgba(59, 130, 246, 0.12)"
+              }}
+            >
+              <strong>
+                [{alert.severity.toUpperCase()}] {alert.title}
+              </strong>
+              <p>{alert.description}</p>
+              <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>
+                {JSON.stringify(alert.metrics, null, 2)}
+              </pre>
+            </article>
+          ))
+        )}
       </div>
       </section>
     </section>

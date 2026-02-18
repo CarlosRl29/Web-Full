@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   createEmptyRoutine,
   Exercise,
@@ -10,6 +10,8 @@ import {
 import { apiRequest } from "../../../lib/api";
 import { useCoachAuth } from "../../../lib/useCoachAuth";
 import { AiPlanSuggestion, AiRecommendationResponse } from "@gym/shared";
+import { useToast } from "../../../components/ToastProvider";
+import { useUnsavedChanges } from "../../../components/UnsavedChangesProvider";
 
 const ORDER_BY_TYPE: Record<"SINGLE" | "SUPERSET_2" | "SUPERSET_3", Array<"A1" | "A2" | "A3">> =
   {
@@ -20,9 +22,12 @@ const ORDER_BY_TYPE: Record<"SINGLE" | "SUPERSET_2" | "SUPERSET_3", Array<"A1" |
 
 export default function CoachRoutinesPage() {
   const { token, loading } = useCoachAuth();
+  const { showToast } = useToast();
+  const { hasUnsavedChanges, setHasUnsavedChanges } = useUnsavedChanges();
   const [routines, setRoutines] = useState<any[]>([]);
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [draft, setDraft] = useState<RoutineDraft>(createEmptyRoutine());
+  const [lastSavedDraft, setLastSavedDraft] = useState<RoutineDraft>(createEmptyRoutine());
   const [message, setMessage] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiData, setAiData] = useState<AiRecommendationResponse | null>(null);
@@ -50,6 +55,28 @@ export default function CoachRoutinesPage() {
     }
     void loadData(token);
   }, [token]);
+
+  const isDirty = useMemo(
+    () => JSON.stringify(draft) !== JSON.stringify(lastSavedDraft),
+    [draft, lastSavedDraft]
+  );
+
+  useEffect(() => {
+    setHasUnsavedChanges(isDirty);
+    return () => setHasUnsavedChanges(false);
+  }, [isDirty, setHasUnsavedChanges]);
+
+  useEffect(() => {
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!isDirty) {
+        return;
+      }
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [isDirty]);
 
   const fetchAppliedTrace = async (accessToken: string, routineId?: string, dayId?: string) => {
     if (!routineId || !dayId) {
@@ -134,12 +161,14 @@ export default function CoachRoutinesPage() {
           body: JSON.stringify(payload)
         }, token);
         setMessage("Rutina actualizada.");
+        showToast("success", "Rutina guardada.");
       } else {
         savedRoutine = await apiRequest("/routines", {
           method: "POST",
           body: JSON.stringify(payload)
         }, token);
         setMessage("Rutina creada.");
+        showToast("success", "Rutina creada.");
       }
       await loadData(token);
       hydrateDraftFromRoutine(savedRoutine);
@@ -164,6 +193,7 @@ export default function CoachRoutinesPage() {
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "No se pudo guardar rutina");
+      showToast("error", "No se pudo guardar la rutina.");
     }
   };
 
@@ -203,6 +233,7 @@ export default function CoachRoutinesPage() {
       setAiData(data);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "No se pudo generar sugerencias");
+      showToast("error", "No se pudieron generar sugerencias AI.");
     } finally {
       setAiLoading(false);
     }
@@ -275,6 +306,7 @@ export default function CoachRoutinesPage() {
     const validationError = validateApplySuggestion(suggestion);
     if (validationError) {
       setMessage(validationError);
+      showToast("error", validationError);
       return;
     }
 
@@ -350,6 +382,7 @@ export default function CoachRoutinesPage() {
           await fetchAppliedTrace(token, routineId, routineDayId);
         } catch (error) {
           setMessage(error instanceof Error ? error.message : "No se pudo registrar AI aplicada");
+          showToast("error", "No se pudo registrar la sugerencia aplicada.");
         }
       })();
     } else if (aiData?.ai_log_id) {
@@ -360,6 +393,7 @@ export default function CoachRoutinesPage() {
     }
 
     setMessage(`Sugerencia aplicada: ${suggestion.title}. Revisa y guarda cuando quieras.`);
+    showToast("info", "Sugerencia aplicada al borrador.");
   };
 
   const hydrateDraftFromRoutine = (routine: any) => {
@@ -367,7 +401,7 @@ export default function CoachRoutinesPage() {
     if (!day) {
       return;
     }
-    setDraft({
+    const nextDraft: RoutineDraft = {
       id: routine.id,
       day_id: day.id,
       name: routine.name,
@@ -388,7 +422,9 @@ export default function CoachRoutinesPage() {
           notes: exercise.notes ?? ""
         }))
       }))
-    });
+    };
+    setDraft(nextDraft);
+    setLastSavedDraft(nextDraft);
     if (token) {
       void fetchAppliedTrace(token, routine.id, day.id);
     }
@@ -404,25 +440,71 @@ export default function CoachRoutinesPage() {
         <h1>Rutinas AXION</h1>
         <p>Gestiona estructuras de entrenamiento y aplica sugerencias AI con trazabilidad completa.</p>
         <div className="axion-actions" style={{ marginTop: 14 }}>
-          <button className="axion-button axion-button-primary" onClick={() => setDraft(createEmptyRoutine())}>
+          <button
+            className="axion-button axion-button-primary"
+            onClick={() => {
+              const empty = createEmptyRoutine();
+              setDraft(empty);
+              setLastSavedDraft(empty);
+              setMessage("");
+            }}
+          >
             Nueva rutina
           </button>
         </div>
       </section>
       {message ? <p className="axion-muted">{message}</p> : null}
       <section className="axion-card">
-      <ul className="axion-list">
-        {routines.map((routine) => (
-          <li key={routine.id} className="axion-list-item">
-            <strong>{routine.name}</strong>
-            <div>
-              <button className="axion-button axion-button-secondary" onClick={() => hydrateDraftFromRoutine(routine)}>
-                Editar
-              </button>
-            </div>
-          </li>
-        ))}
-      </ul>
+      {routines.length === 0 ? (
+        <div className="axion-empty">
+          <strong>Sin rutinas por ahora</strong>
+          <p>Crea tu primera rutina para comenzar a trabajar con recomendaciones AI.</p>
+          <div style={{ marginTop: 16 }}>
+            <button
+              className="axion-button axion-button-primary"
+              onClick={() => {
+                const empty = createEmptyRoutine();
+                setDraft(empty);
+                setLastSavedDraft(empty);
+              }}
+            >
+              Crear rutina
+            </button>
+          </div>
+        </div>
+      ) : (
+        <ul className="axion-list">
+          {routines.map((routine) => (
+            <li key={routine.id} className="axion-list-item">
+              <strong>{routine.name}</strong>
+              <div>
+                <button className="axion-button axion-button-secondary" onClick={() => hydrateDraftFromRoutine(routine)}>
+                  Editar
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      </section>
+
+      <section className="axion-card" style={{ padding: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <span className="axion-pill">
+            {hasUnsavedChanges ? "Cambios sin guardar" : "Todo guardado"}
+          </span>
+          <button
+            className="axion-button axion-button-secondary"
+            disabled={!hasUnsavedChanges}
+            onClick={() => {
+              setDraft(lastSavedDraft);
+              setMessage("Cambios descartados.");
+              showToast("info", "Cambios descartados.");
+            }}
+          >
+            Descartar cambios
+          </button>
+        </div>
       </section>
 
       <RoutineEditor

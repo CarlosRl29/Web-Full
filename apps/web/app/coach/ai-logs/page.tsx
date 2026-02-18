@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiRequest } from "../../../lib/api";
 import { useCoachAuth } from "../../../lib/useCoachAuth";
+import { useToast } from "../../../components/ToastProvider";
 
 type AiLogListItem = {
   id: string;
@@ -46,6 +47,7 @@ export default function CoachAiLogsPage() {
   const searchParams = useSearchParams();
   const queryLogId = searchParams.get("log_id");
   const { token, loading } = useCoachAuth();
+  const { showToast } = useToast();
   const [logs, setLogs] = useState<AiLogListItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [selected, setSelected] = useState<AiLogDetail | null>(null);
@@ -79,6 +81,7 @@ export default function CoachAiLogsPage() {
       return;
     }
     try {
+      showToast("info", "Iniciando exportacion CSV...");
       const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
       const params = new URLSearchParams(queryBase.toString());
       const response = await fetch(`${base}/ai/logs/export.csv?${params.toString()}`, {
@@ -99,8 +102,10 @@ export default function CoachAiLogsPage() {
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
+      showToast("success", "CSV exportado correctamente.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "No se pudo exportar CSV");
+      showToast("error", "No se pudo exportar CSV.");
     }
   };
 
@@ -178,34 +183,43 @@ export default function CoachAiLogsPage() {
       <div className="axion-grid-2">
         <div className="axion-card">
           <h2>Lista</h2>
-          <div className="axion-muted" style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr 1fr", gap: 8, fontSize: 12, marginBottom: 8 }}>
-            <span>ID</span>
-            <span>User</span>
-            <span>Flags</span>
-          </div>
-          {logs.map((item) => (
-            <button
-              key={item.id}
-              onClick={async () => {
-                if (!token) {
-                  return;
-                }
-                const detail = await apiRequest<AiLogDetail>(`/ai/logs/${item.id}`, {}, token);
-                setSelected(detail);
-              }}
-              className="axion-card"
-              style={{ display: "block", width: "100%", textAlign: "left", marginBottom: 8, padding: 8, cursor: "pointer", background: "rgba(255,255,255,0.02)" }}
-            >
-              <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr 1fr", gap: 8, alignItems: "center" }}>
-                <strong style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.id}</strong>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.user_id}</span>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.safety_flags.join(", ") || "-"}</span>
+          {logs.length === 0 ? (
+            <div className="axion-empty">
+              <strong>Sin logs en este rango</strong>
+              <p>Prueba ampliando fechas o genera nuevas recomendaciones AI.</p>
+            </div>
+          ) : (
+            <>
+              <div className="axion-muted" style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr 1fr", gap: 8, fontSize: 12, marginBottom: 8 }}>
+                <span>ID</span>
+                <span>User</span>
+                <span>Flags</span>
               </div>
-              <div className="axion-muted" style={{ marginTop: 6 }}>
-                {new Date(item.created_at).toLocaleString()}
-              </div>
-            </button>
-          ))}
+              {logs.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={async () => {
+                    if (!token) {
+                      return;
+                    }
+                    const detail = await apiRequest<AiLogDetail>(`/ai/logs/${item.id}`, {}, token);
+                    setSelected(detail);
+                  }}
+                  className="axion-card"
+                  style={{ display: "block", width: "100%", textAlign: "left", marginBottom: 8, padding: 8, cursor: "pointer", background: "rgba(255,255,255,0.02)" }}
+                >
+                  <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr 1fr", gap: 8, alignItems: "center" }}>
+                    <strong style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.id}</strong>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.user_id}</span>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.safety_flags.join(", ") || "-"}</span>
+                  </div>
+                  <div className="axion-muted" style={{ marginTop: 6 }}>
+                    {new Date(item.created_at).toLocaleString()}
+                  </div>
+                </button>
+              ))}
+            </>
+          )}
           {nextCursor ? (
             <button className="axion-button axion-button-secondary" onClick={() => void loadLogs(nextCursor, true)} disabled={loadingLogs}>
               Cargar mas
