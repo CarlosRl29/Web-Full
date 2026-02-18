@@ -43,12 +43,17 @@ export default function CoachAiAlertsPage() {
   }
 
   return (
-    <section>
-      <h1>Coach • AI Alerts</h1>
-      {message ? <p>{message}</p> : null}
-      <label>
+    <section className="axion-page">
+      <section className="axion-hero">
+        <h1>AI Alerts</h1>
+        <p>Detecta spikes operativos y señales críticas de seguridad para reaccionar rápido.</p>
+      </section>
+      {message ? <p className="axion-muted">{message}</p> : null}
+      <section className="axion-card">
+      <label className="axion-muted">
         Ventana (horas):
         <input
+          className="axion-input"
           type="number"
           min={1}
           max={168}
@@ -61,15 +66,14 @@ export default function CoachAiAlertsPage() {
         {alerts.map((alert) => (
           <article
             key={alert.id}
+            className="axion-card"
             style={{
-              border: "1px solid #ddd",
-              padding: 12,
               background:
                 alert.severity === "high"
-                  ? "#fee2e2"
+                  ? "rgba(239, 68, 68, 0.24)"
                   : alert.severity === "medium"
-                    ? "#fef3c7"
-                    : "#ecfeff"
+                    ? "rgba(239, 68, 68, 0.12)"
+                    : "rgba(59, 130, 246, 0.12)"
             }}
           >
             <strong>
@@ -82,6 +86,7 @@ export default function CoachAiAlertsPage() {
           </article>
         ))}
       </div>
+      </section>
     </section>
   );
 }

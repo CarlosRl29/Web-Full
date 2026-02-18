@@ -3,9 +3,11 @@ import { CoachNav } from "../../components/CoachNav";
 
 export default function CoachLayout({ children }: { children: ReactNode }) {
   return (
-    <main style={{ padding: 24, fontFamily: "Arial, sans-serif" }}>
+    <main className="axion-shell">
       <CoachNav />
-      {children}
+      <div className="axion-content">
+        <div className="axion-container">{children}</div>
+      </div>
     </main>
   );
 }

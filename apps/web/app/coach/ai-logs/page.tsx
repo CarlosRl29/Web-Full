@@ -145,33 +145,44 @@ export default function CoachAiLogsPage() {
   }
 
   return (
-    <section>
-      <h1>Coach • AI Logs</h1>
-      {message ? <p>{message}</p> : null}
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+    <section className="axion-page">
+      <section className="axion-hero">
+        <h1>AI Logs</h1>
+        <p>Audita decisiones de recomendación, seguridad y uso operativo en un solo flujo.</p>
+      </section>
+      {message ? <p className="axion-muted">{message}</p> : null}
+      <section className="axion-card">
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
         <input
+          className="axion-input"
           value={userId}
           onChange={(event) => setUserId(event.target.value)}
           placeholder="Filtro user_id"
         />
         <input
+          className="axion-input"
           value={safetyFlag}
           onChange={(event) => setSafetyFlag(event.target.value)}
           placeholder="safety_flag"
         />
-        <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
-        <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
-        <button onClick={() => void loadLogs(undefined, false)} disabled={loadingLogs}>
+        <input className="axion-input" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
+        <input className="axion-input" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
+        <button className="axion-button axion-button-secondary" onClick={() => void loadLogs(undefined, false)} disabled={loadingLogs}>
           Filtrar
         </button>
-        <button onClick={() => void exportCsv()} disabled={loadingLogs}>
+        <button className="axion-button axion-button-primary" onClick={() => void exportCsv()} disabled={loadingLogs}>
           Exportar CSV
         </button>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        <div style={{ border: "1px solid #ddd", padding: 12 }}>
+      <div className="axion-grid-2">
+        <div className="axion-card">
           <h2>Lista</h2>
+          <div className="axion-muted" style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr 1fr", gap: 8, fontSize: 12, marginBottom: 8 }}>
+            <span>ID</span>
+            <span>User</span>
+            <span>Flags</span>
+          </div>
           {logs.map((item) => (
             <button
               key={item.id}
@@ -182,32 +193,27 @@ export default function CoachAiLogsPage() {
                 const detail = await apiRequest<AiLogDetail>(`/ai/logs/${item.id}`, {}, token);
                 setSelected(detail);
               }}
-              style={{
-                display: "block",
-                width: "100%",
-                textAlign: "left",
-                marginBottom: 8,
-                border: "1px solid #eee",
-                background: "#fff",
-                padding: 8,
-                cursor: "pointer"
-              }}
+              className="axion-card"
+              style={{ display: "block", width: "100%", textAlign: "left", marginBottom: 8, padding: 8, cursor: "pointer", background: "rgba(255,255,255,0.02)" }}
             >
-              <strong>{item.id}</strong>
-              <div>
-                user: {item.user_id} • {new Date(item.created_at).toLocaleString()}
+              <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr 1fr", gap: 8, alignItems: "center" }}>
+                <strong style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.id}</strong>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.user_id}</span>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.safety_flags.join(", ") || "-"}</span>
               </div>
-              <div>flags: {item.safety_flags.join(", ") || "-"}</div>
+              <div className="axion-muted" style={{ marginTop: 6 }}>
+                {new Date(item.created_at).toLocaleString()}
+              </div>
             </button>
           ))}
           {nextCursor ? (
-            <button onClick={() => void loadLogs(nextCursor, true)} disabled={loadingLogs}>
+            <button className="axion-button axion-button-secondary" onClick={() => void loadLogs(nextCursor, true)} disabled={loadingLogs}>
               Cargar mas
             </button>
           ) : null}
         </div>
 
-        <div style={{ border: "1px solid #ddd", padding: 12 }}>
+        <div className="axion-card">
           <h2>Detalle</h2>
           {selected ? (
             <>
@@ -249,6 +255,7 @@ export default function CoachAiLogsPage() {
           )}
         </div>
       </div>
+      </section>
     </section>
   );
 }

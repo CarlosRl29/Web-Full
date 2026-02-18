@@ -40,12 +40,17 @@ export default function CoachAiMetricsPage() {
   }
 
   return (
-    <section>
-      <h1>Coach • AI Metrics</h1>
-      {message ? <p>{message}</p> : null}
-      <label>
+    <section className="axion-page">
+      <section className="axion-hero">
+        <h1>AI Metrics</h1>
+        <p>Monitorea ahorro por dedup, presión de límites y eficiencia de recomendaciones.</p>
+      </section>
+      {message ? <p className="axion-muted">{message}</p> : null}
+      <section className="axion-card">
+      <label className="axion-muted">
         Dias:
         <input
+          className="axion-input"
           type="number"
           min={1}
           max={90}
@@ -56,24 +61,25 @@ export default function CoachAiMetricsPage() {
       </label>
       {data ? (
         <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(4, minmax(120px, 1fr))", marginTop: 14 }}>
-          <article style={{ border: "1px solid #ddd", padding: 10 }}>
+          <article className="axion-card" style={{ padding: 10 }}>
             <strong>Total</strong>
             <p>{data.total}</p>
           </article>
-          <article style={{ border: "1px solid #ddd", padding: 10 }}>
+          <article className="axion-card" style={{ padding: 10 }}>
             <strong>Dedup hits</strong>
             <p>{data.dedup_hits}</p>
           </article>
-          <article style={{ border: "1px solid #ddd", padding: 10 }}>
+          <article className="axion-card" style={{ padding: 10 }}>
             <strong>Rate limited</strong>
             <p>{data.rate_limited}</p>
           </article>
-          <article style={{ border: "1px solid #ddd", padding: 10 }}>
+          <article className="axion-card" style={{ padding: 10 }}>
             <strong>Ahorro dedup %</strong>
             <p>{data.dedup_savings_pct}%</p>
           </article>
         </div>
       ) : null}
+      </section>
     </section>
   );
 }

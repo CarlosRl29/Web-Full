@@ -66,12 +66,17 @@ export default function CoachAssignmentsPage() {
   }
 
   return (
-    <section style={{ marginTop: 20, border: "1px solid #ddd", padding: 16 }}>
+    <section className="axion-page">
+      <section className="axion-hero">
+        <h1>Asignaciones</h1>
+        <p>Asigna rutinas activas a clientes y centraliza el seguimiento desde el panel de coach.</p>
+      </section>
+      <section className="axion-card">
       <h1>Coach • Asignaciones</h1>
-      {message ? <p>{message}</p> : null}
+      {message ? <p className="axion-muted">{message}</p> : null}
 
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <select value={assignUserId} onChange={(e) => setAssignUserId(e.target.value)}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <select className="axion-select" value={assignUserId} onChange={(e) => setAssignUserId(e.target.value)}>
           <option value="">Seleccionar usuario</option>
           {users.map((user) => (
             <option key={user.id} value={user.id}>
@@ -79,7 +84,7 @@ export default function CoachAssignmentsPage() {
             </option>
           ))}
         </select>
-        <select value={assignRoutineId} onChange={(e) => setAssignRoutineId(e.target.value)}>
+        <select className="axion-select" value={assignRoutineId} onChange={(e) => setAssignRoutineId(e.target.value)}>
           <option value="">Seleccionar rutina</option>
           {routines.map((routine) => (
             <option key={routine.id} value={routine.id}>
@@ -88,23 +93,34 @@ export default function CoachAssignmentsPage() {
           ))}
         </select>
         <input
+          className="axion-input"
           value={coachNotes}
           onChange={(e) => setCoachNotes(e.target.value)}
           placeholder="Coach notes"
         />
-        <button onClick={() => void assignRoutine()}>Asignar</button>
+        <button className="axion-button axion-button-primary" onClick={() => void assignRoutine()}>Asignar</button>
       </div>
 
-      <h3>Clientes y asignaciones</h3>
-      <ul>
-        {assignments.map((assignment) => (
-          <li key={assignment.id}>
-            {assignment.user?.full_name ?? assignment.user_name} -{" "}
-            {assignment.routine?.name ?? assignment.routine_name} (
-            {assignment.is_active ? "activa" : "inactiva"})
-          </li>
-        ))}
-      </ul>
+      <h3 style={{ marginTop: 24 }}>Clientes y asignaciones</h3>
+      <table className="axion-table">
+        <thead>
+          <tr>
+            <th>Cliente</th>
+            <th>Rutina</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {assignments.map((assignment) => (
+            <tr key={assignment.id}>
+              <td>{assignment.user?.full_name ?? assignment.user_name}</td>
+              <td>{assignment.routine?.name ?? assignment.routine_name}</td>
+              <td>{assignment.is_active ? "activa" : "inactiva"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      </section>
     </section>
   );
 }

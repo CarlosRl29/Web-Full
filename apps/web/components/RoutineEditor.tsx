@@ -80,34 +80,39 @@ type Props = {
 
 export function RoutineEditor({ draft, exercises, onChange, onSave }: Props) {
   return (
-    <section style={{ marginTop: 20, border: "1px solid #ddd", padding: 16 }}>
+    <section className="axion-card" style={{ marginTop: 20 }}>
       <h2>Editor de rutina</h2>
       <input
+        className="axion-input"
         value={draft.name}
         onChange={(e) => onChange({ ...draft, name: e.target.value })}
         placeholder="Nombre rutina"
-        style={{ width: "100%", padding: 8, marginBottom: 8 }}
+        style={{ width: "100%", marginBottom: 8 }}
       />
       <input
+        className="axion-input"
         value={draft.description}
         onChange={(e) => onChange({ ...draft, description: e.target.value })}
         placeholder="Descripcion"
-        style={{ width: "100%", padding: 8, marginBottom: 8 }}
+        style={{ width: "100%", marginBottom: 8 }}
       />
       <input
+        className="axion-input"
         value={draft.day_label}
         onChange={(e) => onChange({ ...draft, day_label: e.target.value })}
         placeholder="Dia (ej. Lunes)"
-        style={{ width: "100%", padding: 8, marginBottom: 12 }}
+        style={{ width: "100%", marginBottom: 12 }}
       />
 
       {draft.groups.map((group, groupIndex) => (
         <div
           key={`${group.type}-${groupIndex}`}
-          style={{ border: "1px solid #eee", padding: 12, marginBottom: 12 }}
+          className="axion-card"
+          style={{ marginBottom: 12, padding: 12 }}
         >
           <div style={{ display: "flex", gap: 8 }}>
             <select
+              className="axion-select"
               value={group.type}
               onChange={(e) => {
                 const type = e.target.value as RoutineGroupDraft["type"];
@@ -133,6 +138,7 @@ export function RoutineEditor({ draft, exercises, onChange, onSave }: Props) {
               <option value={ExerciseGroupType.SUPERSET_3}>SUPERSET_3</option>
             </select>
             <input
+              className="axion-input"
               type="number"
               value={group.rounds_total}
               onChange={(e) => {
@@ -143,6 +149,7 @@ export function RoutineEditor({ draft, exercises, onChange, onSave }: Props) {
               placeholder="Rondas"
             />
             <button
+              className="axion-button axion-button-secondary"
               onClick={() =>
                 onChange({
                   ...draft,
@@ -156,6 +163,7 @@ export function RoutineEditor({ draft, exercises, onChange, onSave }: Props) {
 
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
             <input
+              className="axion-input"
               type="number"
               value={group.rest_between_exercises_seconds}
               onChange={(e) => {
@@ -169,6 +177,7 @@ export function RoutineEditor({ draft, exercises, onChange, onSave }: Props) {
               placeholder="Rest entre ejercicios"
             />
             <input
+              className="axion-input"
               type="number"
               value={group.rest_after_round_seconds}
               onChange={(e) => {
@@ -183,6 +192,7 @@ export function RoutineEditor({ draft, exercises, onChange, onSave }: Props) {
             />
             {group.type === "SINGLE" ? (
               <input
+                className="axion-input"
                 type="number"
                 value={group.rest_after_set_seconds ?? 60}
                 onChange={(e) => {
@@ -201,11 +211,13 @@ export function RoutineEditor({ draft, exercises, onChange, onSave }: Props) {
           {group.exercises.map((exercise, exerciseIndex) => (
             <div
               key={`${exercise.order_in_group}-${exerciseIndex}`}
-              style={{ marginTop: 10, padding: 8, background: "#fafafa" }}
+              className="axion-card"
+              style={{ marginTop: 10, padding: 8, background: "rgba(255,255,255,0.02)" }}
             >
               <strong>{exercise.order_in_group}</strong>
               <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
                 <select
+                  className="axion-select"
                   value={exercise.exercise_id}
                   onChange={(e) => {
                     const next = [...draft.groups];
@@ -226,6 +238,7 @@ export function RoutineEditor({ draft, exercises, onChange, onSave }: Props) {
                   ))}
                 </select>
                 <input
+                  className="axion-input"
                   type="number"
                   value={exercise.target_sets_per_round}
                   onChange={(e) => {
@@ -241,6 +254,7 @@ export function RoutineEditor({ draft, exercises, onChange, onSave }: Props) {
                   placeholder="Sets"
                 />
                 <input
+                  className="axion-input"
                   type="number"
                   value={exercise.rep_range_min}
                   onChange={(e) => {
@@ -256,6 +270,7 @@ export function RoutineEditor({ draft, exercises, onChange, onSave }: Props) {
                   placeholder="Reps min"
                 />
                 <input
+                  className="axion-input"
                   type="number"
                   value={exercise.rep_range_max}
                   onChange={(e) => {
@@ -276,10 +291,13 @@ export function RoutineEditor({ draft, exercises, onChange, onSave }: Props) {
         </div>
       ))}
 
-      <button onClick={() => onChange({ ...draft, groups: [...draft.groups, createEmptyGroup("SINGLE")] })}>
+      <button
+        className="axion-button axion-button-secondary"
+        onClick={() => onChange({ ...draft, groups: [...draft.groups, createEmptyGroup("SINGLE")] })}
+      >
         Agregar grupo
       </button>
-      <button style={{ marginLeft: 8 }} onClick={onSave}>
+      <button className="axion-button axion-button-primary" style={{ marginLeft: 8 }} onClick={onSave}>
         Guardar rutina
       </button>
     </section>

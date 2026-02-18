@@ -399,18 +399,31 @@ export default function CoachRoutinesPage() {
   }
 
   return (
-    <section>
-      <h1>Coach • Rutinas</h1>
-      {message ? <p>{message}</p> : null}
-      <button onClick={() => setDraft(createEmptyRoutine())}>Nueva rutina</button>
-      <ul>
+    <section className="axion-page">
+      <section className="axion-hero">
+        <h1>Rutinas AXION</h1>
+        <p>Gestiona estructuras de entrenamiento y aplica sugerencias AI con trazabilidad completa.</p>
+        <div className="axion-actions" style={{ marginTop: 14 }}>
+          <button className="axion-button axion-button-primary" onClick={() => setDraft(createEmptyRoutine())}>
+            Nueva rutina
+          </button>
+        </div>
+      </section>
+      {message ? <p className="axion-muted">{message}</p> : null}
+      <section className="axion-card">
+      <ul className="axion-list">
         {routines.map((routine) => (
-          <li key={routine.id} style={{ marginTop: 8 }}>
-            <strong>{routine.name}</strong>{" "}
-            <button onClick={() => hydrateDraftFromRoutine(routine)}>Editar</button>
+          <li key={routine.id} className="axion-list-item">
+            <strong>{routine.name}</strong>
+            <div>
+              <button className="axion-button axion-button-secondary" onClick={() => hydrateDraftFromRoutine(routine)}>
+                Editar
+              </button>
+            </div>
           </li>
         ))}
       </ul>
+      </section>
 
       <RoutineEditor
         draft={draft}
@@ -419,7 +432,7 @@ export default function CoachRoutinesPage() {
         onSave={() => void saveRoutine()}
       />
       {appliedTrace.length > 0 ? (
-        <section style={{ marginTop: 10, border: "1px solid #d1d5db", padding: 12 }}>
+        <section className="axion-card" style={{ marginTop: 10 }}>
           <strong>AI aplicada</strong>
           {appliedTrace.slice(0, 3).map((item) => (
             <p key={item.id} style={{ margin: "6px 0" }}>
@@ -430,9 +443,9 @@ export default function CoachRoutinesPage() {
         </section>
       ) : null}
 
-      <section style={{ marginTop: 20, border: "1px solid #ddd", padding: 16 }}>
+      <section className="axion-card" style={{ marginTop: 20 }}>
         <h2>AI Sugerencias</h2>
-        <button onClick={() => void generateSuggestions()} disabled={aiLoading}>
+        <button className="axion-button axion-button-primary" onClick={() => void generateSuggestions()} disabled={aiLoading}>
           {aiLoading ? "Generando..." : "Generar sugerencias"}
         </button>
         {aiData ? (
@@ -455,16 +468,14 @@ export default function CoachRoutinesPage() {
               {aiData.plan_suggestions.map((suggestion) => (
                 <article
                   key={suggestion.id}
-                  style={{
-                    border: "1px solid #eee",
-                    padding: 12,
-                    marginBottom: 10,
-                    background: "#fafafa"
-                  }}
+                  className="axion-card"
+                  style={{ padding: 12, marginBottom: 10, background: "rgba(255,255,255,0.02)" }}
                 >
                   <h3 style={{ margin: 0 }}>{suggestion.title}</h3>
                   <p>{suggestion.description}</p>
-                  <button onClick={() => applySuggestion(suggestion)}>Aplicar</button>
+                  <button className="axion-button axion-button-secondary" onClick={() => applySuggestion(suggestion)}>
+                    Aplicar
+                  </button>
                 </article>
               ))}
             </div>
