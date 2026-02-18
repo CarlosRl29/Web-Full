@@ -356,6 +356,29 @@ small {
   border-color: rgba(59, 130, 246, 0.55);
 }
 
+.axion-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(6, 10, 18, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.axion-modal-card {
+  width: min(640px, 100%);
+}
+
+.axion-modal-steps {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  color: var(--muted-strong);
+  display: grid;
+  gap: 6px;
+}
+
 .axion-table {
   width: 100%;
   border-collapse: collapse;

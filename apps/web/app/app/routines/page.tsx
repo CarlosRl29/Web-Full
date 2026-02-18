@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { apiRequest } from "../../../lib/api";
 import { useAppAuth } from "../../../lib/useAppAuth";
 import { useToast } from "../../../components/ToastProvider";
+import { MobileTrainInfoModal } from "../../../components/MobileTrainInfoModal";
 
 type Routine = {
   id: string;
@@ -21,6 +22,7 @@ export default function UserRoutinesPage() {
   const [assignedRoutines, setAssignedRoutines] = useState<Routine[]>([]);
   const [activeRoutineId, setActiveRoutineId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const [showTrainInfo, setShowTrainInfo] = useState(false);
 
   const loadData = async (accessToken: string) => {
     const [owned, assigned, active] = await Promise.all([
@@ -53,28 +55,6 @@ export default function UserRoutinesPage() {
       showToast("success", "Rutina activa actualizada.");
     } catch (error) {
       const text = error instanceof Error ? error.message : "No se pudo actualizar rutina activa";
-      setMessage(text);
-      showToast("error", text);
-    }
-  };
-
-  const startFromRoutine = async (routine: Routine) => {
-    if (!token) {
-      return;
-    }
-    const firstDay = routine.days?.[0];
-    if (!firstDay) {
-      showToast("error", "La rutina no tiene días.");
-      return;
-    }
-    try {
-      await apiRequest("/workout-sessions/start", {
-        method: "POST",
-        body: JSON.stringify({ routine_id: routine.id, day_id: firstDay.id })
-      }, token);
-      showToast("success", "Sesión iniciada.");
-    } catch (error) {
-      const text = error instanceof Error ? error.message : "No se pudo iniciar la sesión";
       setMessage(text);
       showToast("error", text);
     }
@@ -133,7 +113,10 @@ export default function UserRoutinesPage() {
                   <Link className="axion-button axion-button-secondary" href={`/app/routines/${routine.id}`}>
                     Editar
                   </Link>
-                  <button className="axion-button axion-button-secondary" onClick={() => void startFromRoutine(routine)}>
+                  <button
+                    className="axion-button axion-button-secondary"
+                    onClick={() => setShowTrainInfo(true)}
+                  >
                     Entrenar
                   </button>
                 </div>
@@ -162,7 +145,10 @@ export default function UserRoutinesPage() {
                   <button className="axion-button axion-button-secondary" onClick={() => void setActive(routine.id)}>
                     Activar
                   </button>
-                  <button className="axion-button axion-button-secondary" onClick={() => void startFromRoutine(routine)}>
+                  <button
+                    className="axion-button axion-button-secondary"
+                    onClick={() => setShowTrainInfo(true)}
+                  >
                     Entrenar
                   </button>
                 </div>
@@ -179,6 +165,7 @@ export default function UserRoutinesPage() {
           </span>
         </section>
       ) : null}
+      <MobileTrainInfoModal open={showTrainInfo} onClose={() => setShowTrainInfo(false)} />
     </section>
   );
 }

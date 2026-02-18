@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiRequest } from "../../lib/api";
 import { useAppAuth } from "../../lib/useAppAuth";
-import { useToast } from "../../components/ToastProvider";
+import { MobileTrainInfoModal } from "../../components/MobileTrainInfoModal";
 
 type Routine = {
   id: string;
@@ -16,10 +16,10 @@ type Routine = {
 
 export default function AppIndexPage() {
   const { token, loading } = useAppAuth();
-  const { showToast } = useToast();
   const [activeRoutine, setActiveRoutine] = useState<Routine | null>(null);
   const [assigned, setAssigned] = useState<Routine[]>([]);
   const [message, setMessage] = useState("");
+  const [showTrainInfo, setShowTrainInfo] = useState(false);
 
   useEffect(() => {
     if (!token) {
@@ -39,32 +39,6 @@ export default function AppIndexPage() {
         )
       );
   }, [token]);
-
-  const startRoutine = async (routine: Routine) => {
-    if (!token) {
-      return;
-    }
-    const firstDay = routine.days?.[0];
-    if (!firstDay) {
-      showToast("error", "La rutina no tiene días configurados.");
-      return;
-    }
-    try {
-      await apiRequest(
-        "/workout-sessions/start",
-        {
-          method: "POST",
-          body: JSON.stringify({ routine_id: routine.id, day_id: firstDay.id })
-        },
-        token
-      );
-      showToast("success", "Sesión iniciada.");
-    } catch (error) {
-      const text = error instanceof Error ? error.message : "No se pudo iniciar la sesión";
-      setMessage(text);
-      showToast("error", text);
-    }
-  };
 
   if (loading) {
     return <p className="axion-loading">Cargando inicio...</p>;
@@ -101,7 +75,7 @@ export default function AppIndexPage() {
             </div>
             <button
               className="axion-button axion-button-primary"
-              onClick={() => void startRoutine(activeRoutine)}
+              onClick={() => setShowTrainInfo(true)}
             >
               Entrenar
             </button>
@@ -131,7 +105,7 @@ export default function AppIndexPage() {
                 </div>
                 <button
                   className="axion-button axion-button-secondary"
-                  onClick={() => void startRoutine(routine)}
+                  onClick={() => setShowTrainInfo(true)}
                 >
                   Entrenar
                 </button>
@@ -150,6 +124,7 @@ export default function AppIndexPage() {
           </Link>
         </div>
       </section>
+      <MobileTrainInfoModal open={showTrainInfo} onClose={() => setShowTrainInfo(false)} />
     </section>
   );
 }
