@@ -146,7 +146,7 @@ export default function CoachAiLogsPage() {
   }, [token, queryLogId]);
 
   if (loading) {
-    return <p>Cargando...</p>;
+    return <p className="axion-loading">Cargando registros AI...</p>;
   }
 
   return (
@@ -185,7 +185,7 @@ export default function CoachAiLogsPage() {
           <h2>Lista</h2>
           {logs.length === 0 ? (
             <div className="axion-empty">
-              <strong>Sin logs en este rango</strong>
+              <strong>Sin registros en este rango</strong>
               <p>Prueba ampliando fechas o genera nuevas recomendaciones AI.</p>
             </div>
           ) : (

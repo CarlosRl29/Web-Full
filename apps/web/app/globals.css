@@ -94,7 +94,8 @@ small {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
+  min-width: 0;
 }
 
 .axion-logo {
@@ -109,6 +110,14 @@ small {
   gap: var(--space-1);
   color: var(--muted);
   font-size: 14px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  white-space: nowrap;
+}
+
+.axion-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .axion-nav-link {
@@ -137,7 +146,7 @@ small {
 .axion-nav-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .axion-content {
@@ -162,6 +171,9 @@ small {
 .axion-hero h1 {
   font-size: 56px;
   line-height: 1.08;
+  max-width: 18ch;
+  margin: 0 auto;
+  text-wrap: balance;
 }
 
 .axion-hero p {
@@ -207,6 +219,10 @@ small {
   color: #fff;
   cursor: pointer;
   transition: transform 0.18s ease, filter 0.18s ease, box-shadow 0.18s ease;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .axion-button:hover:not(:disabled) {
@@ -344,6 +360,20 @@ small {
   width: 100%;
   border-collapse: collapse;
   margin-top: var(--space-2);
+  min-width: 560px;
+}
+
+.axion-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.axion-loading {
+  padding: 20px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card);
+  background: var(--card-bg);
+  color: var(--muted-strong);
 }
 
 .axion-table th,
@@ -379,16 +409,17 @@ textarea:focus-visible {
   .axion-grid-2 {
     grid-template-columns: 1fr;
   }
-  .axion-nav {
-    display: none;
-  }
-
   .axion-hero {
     padding: var(--space-4) var(--space-2);
   }
 
   .axion-hero h1 {
     font-size: clamp(2.25rem, 8vw, 2.5rem);
+  }
+
+  .axion-nav-link {
+    padding: 6px 10px;
+    font-size: 13px;
   }
 }
 
@@ -405,5 +436,13 @@ textarea:focus-visible {
   .axion-list-item {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .axion-topbar-inner {
+    gap: 8px;
+  }
+
+  .axion-nav-right .axion-button {
+    padding: 8px 10px;
   }
 }

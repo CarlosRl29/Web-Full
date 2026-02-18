@@ -431,7 +431,7 @@ export default function CoachRoutinesPage() {
   };
 
   if (loading) {
-    return <p>Cargando...</p>;
+    return <p className="axion-loading">Cargando panel de rutinas...</p>;
   }
 
   return (
@@ -449,7 +449,7 @@ export default function CoachRoutinesPage() {
               setMessage("");
             }}
           >
-            Nueva rutina
+            Crear rutina
           </button>
         </div>
       </section>
@@ -556,7 +556,7 @@ export default function CoachRoutinesPage() {
                   <h3 style={{ margin: 0 }}>{suggestion.title}</h3>
                   <p>{suggestion.description}</p>
                   <button className="axion-button axion-button-secondary" onClick={() => applySuggestion(suggestion)}>
-                    Aplicar
+                    Aplicar sugerencia
                   </button>
                 </article>
               ))}

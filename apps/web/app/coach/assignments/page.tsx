@@ -66,7 +66,7 @@ export default function CoachAssignmentsPage() {
   };
 
   if (loading) {
-    return <p>Cargando...</p>;
+    return <p className="axion-loading">Cargando asignaciones...</p>;
   }
 
   return (
@@ -108,33 +108,41 @@ export default function CoachAssignmentsPage() {
       <h3 style={{ marginTop: 24 }}>Clientes y asignaciones</h3>
       {assignments.length === 0 ? (
         <div className="axion-empty">
-          <strong>Aun no hay asignaciones</strong>
+          <strong>Aún no hay asignaciones</strong>
           <p>Asigna una rutina para comenzar a gestionar clientes.</p>
           <div style={{ marginTop: 16 }}>
-            <button className="axion-button axion-button-primary" onClick={() => void assignRoutine()}>
+            <button
+              className="axion-button axion-button-primary"
+              onClick={() => {
+                setMessage("Selecciona cliente y rutina para asignar.");
+                showToast("info", "Selecciona cliente y rutina.");
+              }}
+            >
               Asignar rutina
             </button>
           </div>
         </div>
       ) : (
-        <table className="axion-table">
-          <thead>
-            <tr>
-              <th>Cliente</th>
-              <th>Rutina</th>
-              <th>Estado</th>
-            </tr>
-          </thead>
-          <tbody>
-            {assignments.map((assignment) => (
-              <tr key={assignment.id}>
-                <td>{assignment.user?.full_name ?? assignment.user_name}</td>
-                <td>{assignment.routine?.name ?? assignment.routine_name}</td>
-                <td>{assignment.is_active ? "activa" : "inactiva"}</td>
+        <div className="axion-table-wrap">
+          <table className="axion-table">
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Rutina</th>
+                <th>Estado</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {assignments.map((assignment) => (
+                <tr key={assignment.id}>
+                  <td>{assignment.user?.full_name ?? assignment.user_name}</td>
+                  <td>{assignment.routine?.name ?? assignment.routine_name}</td>
+                  <td>{assignment.is_active ? "activa" : "inactiva"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       </section>
     </section>

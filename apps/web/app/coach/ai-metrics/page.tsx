@@ -36,7 +36,7 @@ export default function CoachAiMetricsPage() {
   }, [token, days]);
 
   if (loading) {
-    return <p>Cargando...</p>;
+    return <p className="axion-loading">Cargando métricas...</p>;
   }
 
   return (
@@ -80,7 +80,7 @@ export default function CoachAiMetricsPage() {
         </div>
       ) : (
         <div className="axion-empty" style={{ marginTop: 14 }}>
-          <strong>Aun sin datos</strong>
+          <strong>Aún sin datos</strong>
           <p>Cuando existan recomendaciones AI, veras aqui las metricas operativas.</p>
         </div>
       )}

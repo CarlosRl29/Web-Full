@@ -39,7 +39,7 @@ export default function CoachAiAlertsPage() {
   }, [token, windowHours]);
 
   if (loading) {
-    return <p>Cargando...</p>;
+    return <p className="axion-loading">Cargando alertas...</p>;
   }
 
   return (
