@@ -17,12 +17,12 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password })
       });
       saveTokens(tokens);
-      const me = await apiRequest<{ role: string }>("/auth/me", {}, tokens.access_token);
-      if (me.role !== "COACH" && me.role !== "ADMIN") {
-        setMessage("Tu usuario no tiene rol de COACH/ADMIN.");
+      const me = await apiRequest<{ role: string; active_mode: "USER" | "COACH" }>("/auth/me", {}, tokens.access_token);
+      if (me.active_mode === "COACH" && (me.role === "COACH" || me.role === "ADMIN")) {
+        window.location.href = "/coach/routines";
         return;
       }
-      window.location.href = "/coach/routines";
+      window.location.href = "/app/routines";
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "No se pudo iniciar sesion");
     }
@@ -35,6 +35,7 @@ export default function LoginPage() {
           <div className="axion-logo">AXION</div>
           <nav className="axion-nav">
             <Link className="axion-nav-link is-active" href="/login">Inicio</Link>
+            <Link className="axion-nav-link" href="/register">Registro</Link>
             <Link className="axion-nav-link" href="/coach/routines">Rutinas</Link>
             <Link className="axion-nav-link" href="/coach">Coach Panel</Link>
             <Link className="axion-nav-link" href="/coach/ai-logs">AI Logs</Link>
@@ -63,9 +64,9 @@ export default function LoginPage() {
               </button>
               <button
                 className="axion-button axion-button-secondary"
-                onClick={() => (window.location.href = "/coach/routines")}
+                onClick={() => (window.location.href = "/app/routines")}
               >
-                Coach Panel
+                Portal usuario
               </button>
             </div>
           </div>
