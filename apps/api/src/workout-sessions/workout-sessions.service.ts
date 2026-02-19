@@ -34,11 +34,16 @@ export class WorkoutSessionsService {
     return rows.length > 0;
   }
 
-  private async withExerciseNames<
+  private async withExerciseDetails<
     T extends {
       workout_groups: Array<{
         source_group_id: string;
-        workout_items: Array<{ source_group_exercise_id: string }>;
+        workout_items: Array<{
+          source_group_exercise_id: string;
+          exercise_name?: string | null;
+          exercise_description?: string | null;
+          exercise_media_url?: string | null;
+        }>;
       }>;
     }
   >(
@@ -54,14 +59,27 @@ export class WorkoutSessionsService {
       }
     });
 
-    const exerciseNameByGroupExerciseId = groups.reduce<Record<string, string>>(
+    const exerciseMetaByGroupExerciseId = groups.reduce<
+      Record<string, { name: string; description: string | null; media_url: string | null }>
+    >(
       (acc, group) => {
         group.exercises.forEach((groupExercise) => {
-          acc[groupExercise.id] = groupExercise.exercise.name;
+          const exercise = groupExercise.exercise as unknown as {
+            name: string;
+            instructions?: string | null;
+            media_url?: string | null;
+            image_url?: string | null;
+            video_url?: string | null;
+          };
+          acc[groupExercise.id] = {
+            name: exercise.name,
+            description: exercise.instructions ?? null,
+            media_url: exercise.video_url ?? exercise.image_url ?? exercise.media_url ?? null
+          };
         });
         return acc;
       },
-      {}
+      {} as Record<string, { name: string; description: string | null; media_url: string | null }>
     );
 
     return {
@@ -70,7 +88,18 @@ export class WorkoutSessionsService {
         ...group,
         workout_items: group.workout_items.map((item) => ({
           ...item,
-          exercise_name: exerciseNameByGroupExerciseId[item.source_group_exercise_id] ?? null
+          exercise_name:
+            exerciseMetaByGroupExerciseId[item.source_group_exercise_id]?.name ??
+            item.exercise_name ??
+            null,
+          exercise_description:
+            exerciseMetaByGroupExerciseId[item.source_group_exercise_id]?.description ??
+            item.exercise_description ??
+            null,
+          exercise_media_url:
+            exerciseMetaByGroupExerciseId[item.source_group_exercise_id]?.media_url ??
+            item.exercise_media_url ??
+            null
         }))
       }))
     } as T;
@@ -187,7 +216,7 @@ export class WorkoutSessionsService {
           }
         }
       });
-      return this.withExerciseNames(created);
+      return this.withExerciseDetails(created);
     });
   }
 
@@ -210,7 +239,7 @@ export class WorkoutSessionsService {
     if (!active) {
       return null;
     }
-    return this.withExerciseNames(active);
+    return this.withExerciseDetails(active);
   }
 
   async patchProgress(input: UpdateProgressInput, userId: string) {
@@ -224,16 +253,22 @@ export class WorkoutSessionsService {
 
     return this.prisma.$transaction(async (tx) => {
       if (input.event_id) {
-        const inserted = await tx.$executeRawUnsafe(
-          `
-            INSERT INTO "WorkoutProcessedEvent" (session_id, event_id)
-            VALUES ($1, $2)
-            ON CONFLICT DO NOTHING
-          `,
-          active.id,
-          input.event_id
-        );
-        if (inserted === 0) {
+        try {
+          await tx.$executeRawUnsafe(
+            `
+              INSERT INTO "WorkoutProcessedEvent" (session_id, event_id)
+              VALUES ($1, $2)
+            `,
+            active.id,
+            input.event_id
+          );
+        } catch (error) {
+          if (
+            error instanceof Prisma.PrismaClientKnownRequestError &&
+            error.code !== "P2002"
+          ) {
+            throw error;
+          }
           // duplicate event_id for this session -> idempotent return
           const duplicateSnapshot = await tx.workoutSession.findUniqueOrThrow({
             where: { id: active.id },
@@ -249,7 +284,7 @@ export class WorkoutSessionsService {
               }
             }
           });
-          return this.withExerciseNames(duplicateSnapshot);
+          return this.withExerciseDetails(duplicateSnapshot);
         }
       }
 
@@ -305,7 +340,7 @@ export class WorkoutSessionsService {
           }
         }
       });
-      return this.withExerciseNames(updated);
+      return this.withExerciseDetails(updated);
     });
   }
 

@@ -19,6 +19,8 @@ export type WorkoutExerciseItem = {
   source_group_exercise_id: string;
   order_in_group: "A1" | "A2" | "A3";
   exercise_name?: string | null;
+  exercise_description?: string | null;
+  exercise_media_url?: string | null;
   target_sets_total: number;
   rep_range: string;
   notes?: string | null;
@@ -54,6 +56,10 @@ export type RoutineExercise = {
     name: string;
     muscle_group: string;
     equipment?: string | null;
+    instructions?: string | null;
+    image_url?: string | null;
+    video_url?: string | null;
+    media_url?: string | null;
   };
 };
 

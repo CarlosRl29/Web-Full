@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { RestTimer } from "../components/RestTimer";
 import { ActiveSession, Pointer, WorkoutGroup } from "../types";
 
@@ -83,6 +83,7 @@ export function GuidedWorkoutScreen({
   const [weight, setWeight] = useState(20);
   const [reps, setReps] = useState(10);
   const [showQueueModal, setShowQueueModal] = useState(false);
+  const [showTechniqueModal, setShowTechniqueModal] = useState(false);
   const [restBanner, setRestBanner] = useState<string | null>(null);
   const [rest, setRest] = useState<{ label: "Transicion" | "Descanso"; seconds: number } | null>(
     null
@@ -186,6 +187,12 @@ export function GuidedWorkoutScreen({
         <Text style={styles.exerciseLabel}>Ejercicio enfocado</Text>
         <Text style={styles.exerciseName}>{exerciseName}</Text>
         <Text style={styles.repRange}>Objetivo reps: {item.rep_range}</Text>
+        <Pressable
+          style={styles.techniqueBtn}
+          onPress={() => setShowTechniqueModal(true)}
+        >
+          <Text style={styles.techniqueBtnText}>Ver técnica</Text>
+        </Pressable>
       </View>
 
       <View style={styles.quickLog}>
@@ -282,6 +289,47 @@ export function GuidedWorkoutScreen({
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={showTechniqueModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowTechniqueModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{exerciseName}</Text>
+            <Text style={styles.techniqueSectionTitle}>Descripción</Text>
+            <Text style={styles.modalItem}>
+              {item.exercise_description ?? "Sin descripción disponible para este ejercicio."}
+            </Text>
+            <Text style={styles.techniqueSectionTitle}>Técnica / recomendaciones</Text>
+            <Text style={styles.modalItem}>{item.notes ?? "Sin recomendaciones específicas."}</Text>
+            {item.exercise_media_url ? (
+              <View style={{ marginTop: 10, gap: 8 }}>
+                {item.exercise_media_url.match(/\.(jpg|jpeg|png|webp|gif)$/i) ? (
+                  <Image
+                    source={{ uri: item.exercise_media_url }}
+                    style={styles.techniqueImage}
+                    resizeMode="cover"
+                  />
+                ) : null}
+                <Pressable
+                  style={styles.modalAction}
+                  onPress={() => {
+                    void Linking.openURL(item.exercise_media_url!);
+                  }}
+                >
+                  <Text style={styles.modalActionText}>Abrir media</Text>
+                </Pressable>
+              </View>
+            ) : null}
+            <Pressable style={styles.modalClose} onPress={() => setShowTechniqueModal(false)}>
+              <Text style={styles.modalCloseText}>Cerrar</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -329,6 +377,17 @@ const styles = StyleSheet.create({
   exerciseLabel: { color: "#94a3b8" },
   exerciseName: { color: "#f8fafc", fontSize: 40, fontWeight: "800", marginTop: 8 },
   repRange: { color: "#22d3ee", fontSize: 16, marginTop: 8, fontWeight: "700" },
+  techniqueBtn: {
+    marginTop: 12,
+    backgroundColor: "#1e293b",
+    borderWidth: 1,
+    borderColor: "#334155",
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignSelf: "flex-start"
+  },
+  techniqueBtnText: { color: "#bae6fd", fontWeight: "700" },
   quickLog: {
     marginTop: 14,
     backgroundColor: "#1e293b",
@@ -399,6 +458,24 @@ const styles = StyleSheet.create({
   modalTitle: { color: "#f8fafc", fontSize: 18, fontWeight: "700", marginBottom: 8 },
   modalList: { marginTop: 4 },
   modalItem: { color: "#cbd5e1", marginBottom: 8 },
+  techniqueSectionTitle: {
+    color: "#e2e8f0",
+    fontWeight: "700",
+    marginTop: 8,
+    marginBottom: 4
+  },
+  techniqueImage: {
+    width: "100%",
+    height: 180,
+    borderRadius: 10,
+    backgroundColor: "#0b1220"
+  },
+  modalAction: {
+    backgroundColor: "#1d4ed8",
+    borderRadius: 10,
+    paddingVertical: 10
+  },
+  modalActionText: { color: "#dbeafe", textAlign: "center", fontWeight: "700" },
   modalClose: {
     marginTop: 8,
     backgroundColor: "#22c55e",

@@ -30,20 +30,34 @@ function generateEventId(): string {
   });
 }
 
-function buildExerciseNameMap(day: RoutineDay): Record<string, string> {
-  return day.groups.reduce<Record<string, string>>((acc, group) => {
+function buildExerciseMetaMap(day: RoutineDay): Record<
+  string,
+  { name: string; description?: string | null; media_url?: string | null }
+> {
+  return day.groups.reduce<Record<string, { name: string; description?: string | null; media_url?: string | null }>>((acc, group) => {
     group.exercises.forEach((exercise) => {
-      acc[exercise.id] = exercise.exercise.name;
+      acc[exercise.id] = {
+        name: exercise.exercise.name,
+        description: exercise.exercise.instructions ?? null,
+        media_url:
+          exercise.exercise.video_url ??
+          exercise.exercise.image_url ??
+          exercise.exercise.media_url ??
+          null
+      };
     });
     return acc;
   }, {});
 }
 
-function hydrateSessionNames(
+function hydrateSessionExerciseMeta(
   session: ActiveSession,
-  exerciseNamesBySourceId?: Record<string, string>
+  exerciseMetaBySourceId?: Record<
+    string,
+    { name: string; description?: string | null; media_url?: string | null }
+  >
 ): ActiveSession {
-  if (!exerciseNamesBySourceId) {
+  if (!exerciseMetaBySourceId) {
     return session;
   }
   return {
@@ -52,7 +66,14 @@ function hydrateSessionNames(
       ...group,
       workout_items: group.workout_items.map((item) => ({
         ...item,
-        exercise_name: exerciseNamesBySourceId[item.source_group_exercise_id] ?? item.exercise_name
+        exercise_name:
+          exerciseMetaBySourceId[item.source_group_exercise_id]?.name ?? item.exercise_name,
+        exercise_description:
+          exerciseMetaBySourceId[item.source_group_exercise_id]?.description ??
+          item.exercise_description,
+        exercise_media_url:
+          exerciseMetaBySourceId[item.source_group_exercise_id]?.media_url ??
+          item.exercise_media_url
       }))
     }))
   };
@@ -128,9 +149,9 @@ export function useWorkoutSession() {
   const startSession = useCallback(
     async (payload: StartSessionInput, selectedDay: RoutineDay) => {
       const remoteSession = await startWorkoutSession(payload);
-      const nextSession = hydrateSessionNames(
+      const nextSession = hydrateSessionExerciseMeta(
         remoteSession,
-        buildExerciseNameMap(selectedDay)
+        buildExerciseMetaMap(selectedDay)
       );
       setActiveSession(nextSession);
       await persistSession(nextSession);
