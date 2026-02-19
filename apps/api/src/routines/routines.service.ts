@@ -544,6 +544,32 @@ export class RoutinesService {
     return follow;
   }
 
+  async followCoachById(coachId: string, userId: string) {
+    if (coachId === userId) {
+      throw new ForbiddenException("Cannot follow yourself");
+    }
+    const coach = await this.prisma.user.findUnique({
+      where: { id: coachId },
+      select: { id: true, role: true }
+    });
+    if (!coach || (coach.role !== UserRole.COACH && coach.role !== UserRole.ADMIN)) {
+      throw new NotFoundException("Coach not found");
+    }
+    return this.prisma.coachFollow.upsert({
+      where: {
+        user_id_coach_id: {
+          user_id: userId,
+          coach_id: coachId
+        }
+      },
+      update: {},
+      create: {
+        user_id: userId,
+        coach_id: coachId
+      }
+    });
+  }
+
   async remove(id: string, ownerId: string, role: UserRole) {
     const routine = await this.prisma.routine.findUnique({ where: { id } });
     if (!routine) {

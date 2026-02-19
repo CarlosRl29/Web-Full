@@ -11,19 +11,24 @@ export default function CoachAssignmentsPage() {
   const [users, setUsers] = useState<Array<{ id: string; full_name: string; email: string }>>([]);
   const [routines, setRoutines] = useState<Array<{ id: string; name: string }>>([]);
   const [assignments, setAssignments] = useState<any[]>([]);
+  const [userSearch, setUserSearch] = useState("");
   const [assignUserId, setAssignUserId] = useState("");
   const [assignRoutineId, setAssignRoutineId] = useState("");
   const [coachNotes, setCoachNotes] = useState("");
   const [message, setMessage] = useState("");
+  const [updatingAssignmentId, setUpdatingAssignmentId] = useState<string | null>(null);
 
-  const loadData = async (accessToken: string) => {
+  const loadData = async (accessToken: string, search = "") => {
+    const searchQuery = search.trim()
+      ? `/coach/users?search=${encodeURIComponent(search.trim())}`
+      : "/coach/users";
     const [userData, routineData, assignmentData] = await Promise.all([
       apiRequest<Array<{ id: string; full_name: string; email: string }>>(
-        "/coach/users",
+        searchQuery,
         {},
         accessToken
       ),
-      apiRequest<Array<{ id: string; name: string }>>("/routines", {}, accessToken),
+      apiRequest<Array<{ id: string; name: string }>>("/routines/owned", {}, accessToken),
       apiRequest<any[]>("/coach/clients", {}, accessToken)
     ]);
     setUsers(userData);
@@ -38,8 +43,8 @@ export default function CoachAssignmentsPage() {
     if (!token) {
       return;
     }
-    void loadData(token);
-  }, [token]);
+    void loadData(token, userSearch);
+  }, [token, userSearch]);
 
   const assignRoutine = async () => {
     if (!token || !assignUserId || !assignRoutineId) {
@@ -65,6 +70,31 @@ export default function CoachAssignmentsPage() {
     }
   };
 
+  const updateAssignmentState = async (assignmentId: string, isActive: boolean) => {
+    if (!token) {
+      return;
+    }
+    setUpdatingAssignmentId(assignmentId);
+    try {
+      await apiRequest(
+        `/coach/assignments/${assignmentId}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ is_active: isActive })
+        },
+        token
+      );
+      showToast("success", isActive ? "Asignación activada." : "Asignación desactivada.");
+      await loadData(token, userSearch);
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "No se pudo actualizar la asignación";
+      setMessage(text);
+      showToast("error", text);
+    } finally {
+      setUpdatingAssignmentId(null);
+    }
+  };
+
   if (loading) {
     return <p className="axion-loading">Cargando asignaciones...</p>;
   }
@@ -79,7 +109,15 @@ export default function CoachAssignmentsPage() {
       <h1>Coach • Asignaciones</h1>
       {message ? <p className="axion-muted">{message}</p> : null}
 
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+      <div style={{ display: "grid", gap: 10 }}>
+        <input
+          className="axion-input"
+          value={userSearch}
+          onChange={(e) => setUserSearch(e.target.value)}
+          placeholder="Buscar cliente por nombre o email"
+        />
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>
         <select className="axion-select" value={assignUserId} onChange={(e) => setAssignUserId(e.target.value)}>
           <option value="">Seleccionar usuario</option>
           {users.map((user) => (
@@ -100,7 +138,7 @@ export default function CoachAssignmentsPage() {
           className="axion-input"
           value={coachNotes}
           onChange={(e) => setCoachNotes(e.target.value)}
-          placeholder="Coach notes"
+          placeholder="Notas para el cliente"
         />
         <button className="axion-button axion-button-primary" onClick={() => void assignRoutine()}>Asignar</button>
       </div>
@@ -130,6 +168,7 @@ export default function CoachAssignmentsPage() {
                 <th>Cliente</th>
                 <th>Rutina</th>
                 <th>Estado</th>
+                <th>Acción</th>
               </tr>
             </thead>
             <tbody>
@@ -138,6 +177,17 @@ export default function CoachAssignmentsPage() {
                   <td>{assignment.user?.full_name ?? assignment.user_name}</td>
                   <td>{assignment.routine?.name ?? assignment.routine_name}</td>
                   <td>{assignment.is_active ? "activa" : "inactiva"}</td>
+                  <td>
+                    <button
+                      className="axion-button axion-button-secondary"
+                      disabled={updatingAssignmentId === assignment.id}
+                      onClick={() =>
+                        void updateAssignmentState(assignment.id, !assignment.is_active)
+                      }
+                    >
+                      {assignment.is_active ? "Desactivar" : "Activar"}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

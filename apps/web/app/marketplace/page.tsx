@@ -17,6 +17,7 @@ type MarketplaceRoutine = {
   rating_average: number;
   rating_count: number;
   owner_name?: string | null;
+  owner?: { id: string; full_name?: string | null } | null;
 };
 
 export default function MarketplacePage() {
@@ -48,12 +49,16 @@ export default function MarketplacePage() {
     }
   };
 
-  const followCoach = async (routineId: string) => {
+  const followCoach = async (coachId: string) => {
     if (!token) {
       return;
     }
+    if (!coachId) {
+      showToast("error", "No se encontró coach para seguir.");
+      return;
+    }
     try {
-      await apiRequest(`/routines/${routineId}/follow`, { method: "POST" }, token);
+      await apiRequest(`/routines/coach/${coachId}/follow`, { method: "POST" }, token);
       showToast("success", "Coach seguido correctamente.");
     } catch (error) {
       const text = error instanceof Error ? error.message : "No se pudo seguir coach";
@@ -100,6 +105,14 @@ export default function MarketplacePage() {
                         Coach: {item.owner_name ?? "N/A"} • Rating: {item.rating_average.toFixed(1)} (
                         {item.rating_count})
                       </p>
+                      {item.owner?.id ? (
+                        <Link
+                          className="axion-button axion-button-secondary"
+                          href={`/marketplace/coach/${item.owner.id}`}
+                        >
+                          Ver coach
+                        </Link>
+                      ) : null}
                     </div>
                     <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
                       <button
@@ -110,7 +123,7 @@ export default function MarketplacePage() {
                       </button>
                       <button
                         className="axion-button axion-button-secondary"
-                        onClick={() => void followCoach(item.id)}
+                        onClick={() => void followCoach(item.owner?.id ?? "")}
                       >
                         Seguir coach
                       </button>

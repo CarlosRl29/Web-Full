@@ -11,6 +11,7 @@ type RoutineDetail = {
   name: string;
   description?: string | null;
   owner_name?: string | null;
+  owner?: { id: string; full_name?: string | null } | null;
   marketplace_title?: string | null;
   marketplace_description?: string | null;
   rating_average: number;
@@ -28,6 +29,7 @@ type RoutineDetail = {
 
 export default function MarketplaceRoutineDetailPage() {
   const params = useParams<{ routineId: string }>();
+  const routineId = params?.routineId ?? "";
   const { token, loading } = useAppAuth();
   const [item, setItem] = useState<RoutineDetail | null>(null);
   const [rating, setRating] = useState(5);
@@ -35,7 +37,10 @@ export default function MarketplaceRoutineDetailPage() {
   const [message, setMessage] = useState("");
 
   const loadDetail = async (accessToken: string) => {
-    const data = await apiRequest<RoutineDetail>(`/routines/marketplace/${params.routineId}`, {}, accessToken);
+    if (!routineId) {
+      return;
+    }
+    const data = await apiRequest<RoutineDetail>(`/routines/marketplace/${routineId}`, {}, accessToken);
     setItem(data);
   };
 
@@ -46,7 +51,7 @@ export default function MarketplaceRoutineDetailPage() {
     void loadDetail(token).catch((error) =>
       setMessage(error instanceof Error ? error.message : "No se pudo cargar detalle")
     );
-  }, [token, params.routineId]);
+  }, [token, routineId]);
 
   const cloneRoutine = async () => {
     if (!token || !item) {
@@ -81,8 +86,13 @@ export default function MarketplaceRoutineDetailPage() {
     if (!token || !item) {
       return;
     }
+    const coachId = item.owner?.id;
+    if (!coachId) {
+      setMessage("No se encontró coach para seguir.");
+      return;
+    }
     try {
-      await apiRequest(`/routines/${item.id}/follow`, { method: "POST" }, token);
+      await apiRequest(`/routines/coach/${coachId}/follow`, { method: "POST" }, token);
       setMessage("Ahora sigues a este coach.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "No se pudo seguir al coach");
@@ -115,9 +125,16 @@ export default function MarketplaceRoutineDetailPage() {
               Creada por: {item?.owner_name ?? "N/A"} • Rating: {(item?.rating_average ?? 0).toFixed(1)} (
               {item?.rating_count ?? 0})
             </p>
-            <button className="axion-button axion-button-secondary" onClick={() => void followCoach()}>
-              Seguir coach
-            </button>
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <button className="axion-button axion-button-secondary" onClick={() => void followCoach()}>
+                Seguir coach
+              </button>
+              {item?.owner?.id ? (
+                <Link className="axion-button axion-button-secondary" href={`/marketplace/coach/${item.owner.id}`}>
+                  Ver perfil coach
+                </Link>
+              ) : null}
+            </div>
             <h3 style={{ marginTop: 14 }}>Preview</h3>
             {(item?.days ?? []).map((day) => (
               <article key={day.id} className="axion-card" style={{ padding: 12, marginBottom: 10 }}>

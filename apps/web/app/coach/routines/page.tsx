@@ -40,6 +40,7 @@ export default function CoachRoutinesPage() {
     routine_day_id: string;
   }>>([]);
   const [publishMeta, setPublishMeta] = useState({
+    is_public: false,
     marketplace_title: "",
     marketplace_goal: "Hipertrofia",
     marketplace_level: "Intermedio",
@@ -224,15 +225,29 @@ export default function CoachRoutinesPage() {
     setAiLoading(true);
     setMessage("");
     try {
+      const me = await apiRequest<{
+        goal: "STRENGTH" | "HYPERTROPHY" | "MIXED" | null;
+        experience_level: "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | null;
+        days_per_week: number | null;
+        session_minutes: number | null;
+        injuries: string | null;
+        equipment: string[] | null;
+      }>("/auth/me", {}, token);
+
       const data = await apiRequest<AiRecommendationResponse>(
         "/ai/recommendations",
         {
           method: "POST",
           body: JSON.stringify({
             profile: {
-              experience_level: "INTERMEDIATE",
-              goal: getGoal(),
-              days_per_week: 4
+              experience_level: me.experience_level ?? "INTERMEDIATE",
+              goal: me.goal ?? getGoal(),
+              days_per_week: me.days_per_week ?? 4
+            },
+            constraints: {
+              injuries: me.injuries ?? undefined,
+              equipment: me.equipment ?? undefined,
+              session_minutes: me.session_minutes ?? undefined
             },
             context: { window_days: 28 }
           })
@@ -435,6 +450,7 @@ export default function CoachRoutinesPage() {
     setDraft(nextDraft);
     setLastSavedDraft(nextDraft);
     setPublishMeta({
+      is_public: Boolean(routine.is_public),
       marketplace_title: routine.marketplace_title ?? routine.name ?? "",
       marketplace_goal: routine.marketplace_goal ?? "Hipertrofia",
       marketplace_level: routine.marketplace_level ?? "Intermedio",
@@ -454,13 +470,29 @@ export default function CoachRoutinesPage() {
       showToast("info", "Guarda primero la rutina.");
       return;
     }
+    const requiredMissing =
+      !publishMeta.marketplace_goal.trim() ||
+      !publishMeta.marketplace_level.trim() ||
+      !publishMeta.marketplace_description.trim() ||
+      !Number.isFinite(Number(publishMeta.marketplace_days_per_week)) ||
+      Number(publishMeta.marketplace_days_per_week) <= 0 ||
+      !Number.isFinite(Number(publishMeta.marketplace_duration_weeks)) ||
+      Number(publishMeta.marketplace_duration_weeks) <= 0;
+
+    if (publishMeta.is_public && requiredMissing) {
+      const warn = "Completa esto para publicar: objetivo, nivel, días/semana, duración y descripción.";
+      setMessage(warn);
+      showToast("error", warn);
+      return;
+    }
+
     try {
       await apiRequest(
         `/routines/${draft.id}/publish`,
         {
           method: "PATCH",
           body: JSON.stringify({
-            is_public: true,
+            is_public: publishMeta.is_public,
             marketplace_title: publishMeta.marketplace_title || draft.name,
             marketplace_goal: publishMeta.marketplace_goal,
             marketplace_level: publishMeta.marketplace_level,
@@ -475,8 +507,15 @@ export default function CoachRoutinesPage() {
         },
         token
       );
-      showToast("success", "Rutina publicada en marketplace.");
-      setMessage("Rutina publicada.");
+      showToast(
+        "success",
+        publishMeta.is_public
+          ? "Rutina publicada en marketplace."
+          : "Rutina retirada de marketplace."
+      );
+      setMessage(
+        publishMeta.is_public ? "Rutina publicada." : "Rutina retirada de marketplace."
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "No se pudo publicar rutina");
       showToast("error", "No se pudo publicar.");
@@ -581,6 +620,16 @@ export default function CoachRoutinesPage() {
       <section className="axion-card" style={{ marginTop: 20 }}>
         <h2>Publicar en Marketplace</h2>
         <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
+          <label className="axion-muted" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={publishMeta.is_public}
+              onChange={(e) =>
+                setPublishMeta((prev) => ({ ...prev, is_public: e.target.checked }))
+              }
+            />
+            Publicar en marketplace
+          </label>
           <input
             className="axion-input"
             placeholder="Título público"
@@ -621,7 +670,7 @@ export default function CoachRoutinesPage() {
             onChange={(e) => setPublishMeta((prev) => ({ ...prev, marketplace_tags: e.target.value }))}
           />
           <button className="axion-button axion-button-secondary" onClick={() => void publishRoutine()}>
-            Publicar rutina
+            {publishMeta.is_public ? "Publicar rutina" : "Guardar como no pública"}
           </button>
         </div>
       </section>

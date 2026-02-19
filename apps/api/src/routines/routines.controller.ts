@@ -6,8 +6,7 @@ import {
   Param,
   Patch,
   Put,
-  Post,
-  UsePipes
+  Post
 } from "@nestjs/common";
 import {
   createRoutineReviewSchema,
@@ -49,8 +48,10 @@ export class RoutinesController {
   }
 
   @Patch("active")
-  @UsePipes(new ZodValidationPipe(setActiveRoutineSchema))
-  setActiveRoutine(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+  setActiveRoutine(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(setActiveRoutineSchema)) body: unknown
+  ) {
     return this.routinesService.setActiveRoutine(user.sub, body as never);
   }
 
@@ -71,16 +72,17 @@ export class RoutinesController {
 
   @Post()
   @Roles(UserRole.COACH, UserRole.ADMIN, UserRole.USER)
-  @UsePipes(new ZodValidationPipe(createRoutineSchema))
-  create(@Body() body: unknown, @CurrentUser() user: AuthUser) {
+  create(
+    @Body(new ZodValidationPipe(createRoutineSchema)) body: unknown,
+    @CurrentUser() user: AuthUser
+  ) {
     return this.routinesService.create(body as never, user.sub);
   }
 
   @Patch(":id")
-  @UsePipes(new ZodValidationPipe(updateRoutineSchema))
   update(
     @Param("id") id: string,
-    @Body() body: unknown,
+    @Body(new ZodValidationPipe(updateRoutineSchema)) body: unknown,
     @CurrentUser() user: AuthUser
   ) {
     return this.routinesService.update(id, body as never, user.sub, user.role);
@@ -88,10 +90,9 @@ export class RoutinesController {
 
   @Patch(":id/publish")
   @Roles(UserRole.COACH, UserRole.ADMIN)
-  @UsePipes(new ZodValidationPipe(publishRoutineSchema))
   publish(
     @Param("id") id: string,
-    @Body() body: unknown,
+    @Body(new ZodValidationPipe(publishRoutineSchema)) body: unknown,
     @CurrentUser() user: AuthUser
   ) {
     return this.routinesService.publishRoutine(id, user.sub, user.role, body as never);
@@ -105,10 +106,9 @@ export class RoutinesController {
 
   @Post(":id/reviews")
   @Roles(UserRole.USER, UserRole.COACH, UserRole.ADMIN)
-  @UsePipes(new ZodValidationPipe(createRoutineReviewSchema))
   createReview(
     @Param("id") id: string,
-    @Body() body: unknown,
+    @Body(new ZodValidationPipe(createRoutineReviewSchema)) body: unknown,
     @CurrentUser() user: AuthUser
   ) {
     return this.routinesService.upsertRoutineReview(id, user.sub, body as never);
@@ -120,12 +120,17 @@ export class RoutinesController {
     return this.routinesService.followRoutineCoach(id, user.sub);
   }
 
+  @Post("coach/:coachId/follow")
+  @Roles(UserRole.USER, UserRole.COACH, UserRole.ADMIN)
+  followCoachById(@Param("coachId") coachId: string, @CurrentUser() user: AuthUser) {
+    return this.routinesService.followCoachById(coachId, user.sub);
+  }
+
   @Put(":id/days/:dayId/structure")
-  @UsePipes(new ZodValidationPipe(saveRoutineDayStructureSchema))
   saveDayStructure(
     @Param("id") id: string,
     @Param("dayId") dayId: string,
-    @Body() body: unknown,
+    @Body(new ZodValidationPipe(saveRoutineDayStructureSchema)) body: unknown,
     @CurrentUser() user: AuthUser
   ) {
     return this.routinesService.saveDayStructure(

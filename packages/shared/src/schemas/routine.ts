@@ -54,6 +54,11 @@ export const createRoutineAssignmentSchema = z.object({
   coach_notes: z.string().max(1000).optional()
 });
 
+export const updateRoutineAssignmentSchema = z.object({
+  is_active: z.boolean().optional(),
+  coach_notes: z.string().max(1000).optional()
+});
+
 export const setActiveRoutineSchema = z.object({
   routine_id: z.string().uuid()
 });
@@ -81,6 +86,7 @@ export const followCoachSchema = z.object({
 export type CreateRoutineInput = z.infer<typeof createRoutineSchema>;
 export type SaveRoutineDayStructureInput = z.infer<typeof saveRoutineDayStructureSchema>;
 export type CreateRoutineAssignmentInput = z.infer<typeof createRoutineAssignmentSchema>;
+export type UpdateRoutineAssignmentInput = z.infer<typeof updateRoutineAssignmentSchema>;
 export type SetActiveRoutineInput = z.infer<typeof setActiveRoutineSchema>;
 export type PublishRoutineInput = z.infer<typeof publishRoutineSchema>;
 export type CreateRoutineReviewInput = z.infer<typeof createRoutineReviewSchema>;
