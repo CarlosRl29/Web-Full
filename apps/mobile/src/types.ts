@@ -21,6 +21,7 @@ export type WorkoutExerciseItem = {
   exercise_name?: string | null;
   exercise_description?: string | null;
   exercise_media_url?: string | null;
+  primary_muscle_label?: string | null;
   target_sets_total: number;
   rep_range: string;
   notes?: string | null;
@@ -41,6 +42,8 @@ export type WorkoutGroup = {
 
 export type ActiveSession = {
   id: string;
+  routine_id?: string;
+  routine_day_id?: string;
   current_pointer: Pointer;
   workout_groups: WorkoutGroup[];
 };

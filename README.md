@@ -123,8 +123,26 @@ docker compose up --build
 
 Esto levanta:
 
-- `postgres` en `localhost:5432`
+- `postgres` en `localhost:5432` (imagen `pgvector/pgvector:pg16` con extensión vector)
 - `api` en `localhost:3001`
+
+### Recrear contenedores tras cambios (pgvector)
+
+Si el contenedor Postgres se creó antes con `postgres:16-alpine` (sin pgvector), hay que recrearlo:
+
+```bash
+docker compose down
+docker compose pull
+docker compose up -d --force-recreate
+```
+
+Luego verificar pgvector:
+
+```bash
+docker exec -it gym-postgres psql -U gym -d gym_app -c "SELECT extname FROM pg_extension WHERE extname='vector';"
+```
+
+Resultado esperado: `vector`
 
 ## 6) Tests minimos
 
@@ -163,3 +181,63 @@ npm run test -w apps/api
 - Sprint 1:
   - API con auth/routines/exercises/workout sessions
   - mobile guided training loop con pre-start y offline-first local
+
+## 10) RAG Knowledge Base (AI routine generation)
+
+The AI routine generator uses a RAG (Retrieval-Augmented Generation) knowledge base to inject curated training principles into the context.
+
+### Setup (requires pgvector)
+
+**Docker**: El `docker-compose` usa `pgvector/pgvector:pg16` y el script `docker/postgres/init/01-enable-pgvector.sql` activa la extensión al inicializar la base. Tras actualizar la imagen, ejecuta `docker compose down`, `docker compose pull`, `docker compose up -d --force-recreate`.
+
+**PostgreSQL local**: Instala pgvector (ej. `apt install postgresql-16-pgvector`).
+
+1. **Run the knowledge tables migration** (after pgvector is available):
+   ```bash
+   npm run db:migrate:deploy -w apps/api
+   ```
+3. **Set environment variables**:
+   - `OPENAI_API_KEY` – required for embeddings
+   - `KNOWLEDGE_PACK_VERSION` – version tag for documents (default: `unknown`)
+4. **Ingest knowledge** from `ai-knowledge/*.md`:
+   ```bash
+   npm run ai:ingest-knowledge -w apps/api
+   ```
+
+Without pgvector, the logging columns (`retrieved_sources`, `retrieved_top_k`) are still applied; retrieval returns empty until the knowledge tables exist.
+
+### RAG Setup
+
+To enable knowledge embeddings:
+
+1. Add to `apps/api/.env` (or root `.env`):
+
+```
+OPENAI_API_KEY=your_key_here
+KNOWLEDGE_PACK_VERSION=v1
+```
+
+2. Run:
+
+```bash
+cd apps/api
+npm run ai:ingest-knowledge
+```
+
+Without `OPENAI_API_KEY`, ingestion still runs but stores documents without embeddings (RAG retrieval disabled).
+
+## 11) IA de recomendaciones (actual)
+
+La IA actual (`/api/ai/recommendations`) **no genera rutinas desde cero**. Analiza el historial de entrenamiento del usuario (adherencia, RPE, volumen) y sugiere **ajustes** a la rutina existente:
+
+- **Entrada**: perfil (objetivo, nivel, días/semana), restricciones (lesiones, equipo), historial de sesiones.
+- **Salida**: sugerencias como "aumentar 1 set por ejercicio" o "mantener volumen actual" según adherencia y recuperación.
+- **Modo seguro**: si detecta dolor agudo o lesión, recomienda cargas submaximales sin progresión.
+
+**Referencia de otras apps** (FitAI, AI Workout Generator, Setgraph, Gym Genius):
+
+- Generan **rutinas completas** desde perfil: objetivo (hipertrofia/fuerza), equipo disponible, días/semana.
+- Personalización por nivel (principiante/avanzado), lesiones, preferencias.
+- Algunas incluyen validación biomecánica y progresión automática.
+
+**Visión para AXION**: extender la IA para generar rutinas completas basadas en perfil y objetivos, además de los ajustes actuales.

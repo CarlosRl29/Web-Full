@@ -5,5 +5,5 @@ import { UserRoutineEditorPage } from "../../../../components/UserRoutineEditorP
 
 export default function EditRoutinePage() {
   const params = useParams<{ id: string }>();
-  return <UserRoutineEditorPage routineId={params.id} />;
+  return <UserRoutineEditorPage routineId={params?.id} />;
 }

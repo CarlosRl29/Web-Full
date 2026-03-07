@@ -16,7 +16,9 @@ import {
   finishWorkoutSession,
   getActiveWorkoutSession,
   patchWorkoutProgress,
-  startWorkoutSession
+  startWorkoutSession,
+  swapExercise,
+  type SwapReason
 } from "../services/api";
 import { ActiveSession, Pointer, RoutineDay } from "../types";
 
@@ -208,22 +210,27 @@ export function useWorkoutSession() {
   );
 
   const saveSet = useCallback(
-    async (setPayload: UpdateProgressInput["set_update"]) => {
+    async (
+      setPayload: UpdateProgressInput["set_update"],
+      pointerUpdate?: Pointer
+    ): Promise<void> => {
       if (!activeSession || !setPayload) {
         return;
       }
 
+      const previousSession = activeSession;
       const next = {
         ...activeSession,
+        current_pointer: pointerUpdate ?? activeSession.current_pointer,
         workout_groups: activeSession.workout_groups.map((group) => ({
           ...group,
-          workout_items: group.workout_items.map((item) => {
-            if (item.id !== setPayload.workout_exercise_item_id) {
-              return item;
+          workout_items: group.workout_items.map((it) => {
+            if (it.id !== setPayload.workout_exercise_item_id) {
+              return it;
             }
             return {
-              ...item,
-              sets: item.sets.map((set) =>
+              ...it,
+              sets: it.sets.map((set) =>
                 set.set_number === setPayload.set_number
                   ? {
                       ...set,
@@ -244,15 +251,20 @@ export function useWorkoutSession() {
 
       const payload: UpdateProgressInput = {
         event_id: generateEventId(),
-        set_update: setPayload
+        set_update: setPayload,
+        ...(pointerUpdate ? { current_pointer: pointerUpdate } : {})
       };
+
       if (isOnline) {
         try {
           const updated = await patchWorkoutProgress(payload);
           setActiveSession(updated);
           await persistSession(updated);
-        } catch {
-          await enqueueProgress(payload);
+        } catch (err) {
+          setActiveSession(previousSession);
+          await persistSession(previousSession);
+          const msg = err instanceof Error ? err.message : "Error al guardar. Revisa tu conexión.";
+          throw new Error(msg);
         }
       } else {
         await enqueueProgress(payload);
@@ -261,18 +273,43 @@ export function useWorkoutSession() {
     [activeSession, enqueueProgress, isOnline, persistSession]
   );
 
-  const finishSession = useCallback(async () => {
+  const finishSession = useCallback(async (): Promise<ActiveSession | null> => {
     if (!activeSession) {
-      return;
+      return null;
     }
+    let finished: ActiveSession | null = null;
     try {
-      await finishWorkoutSession(activeSession.id);
+      finished = await finishWorkoutSession(activeSession.id);
     } catch {
-      // No-op: si está offline, ya queda localmente terminada.
+      // Offline: clear locally, no summary
     }
     setActiveSession(null);
     await persistSession(null);
+    return finished;
   }, [activeSession, persistSession]);
+
+  const onSwap = useCallback(
+    async (
+      workoutExerciseId: string,
+      body: {
+        replacement_exercise_id: string;
+        reason: SwapReason;
+        save_preference: boolean;
+      }
+    ): Promise<{ savedPreference: boolean }> => {
+      if (!activeSession || !isOnline) {
+        throw new Error("Sesión no disponible o sin conexión.");
+      }
+      const result = await swapExercise(activeSession.id, workoutExerciseId, body);
+      const updated = await getActiveWorkoutSession();
+      if (updated) {
+        setActiveSession(updated);
+        await persistSession(updated);
+      }
+      return { savedPreference: body.save_preference };
+    },
+    [activeSession, isOnline, persistSession]
+  );
 
   const resetLocalSession = useCallback(async () => {
     setActiveSession(null);
@@ -439,6 +476,7 @@ export function useWorkoutSession() {
     saveSet,
     savePointer,
     finishSession,
+    onSwap,
     resetLocalSession,
     forceSync,
     retryFailed

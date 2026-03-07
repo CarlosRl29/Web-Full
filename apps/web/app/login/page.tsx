@@ -3,8 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { apiRequest, AuthTokens, saveTokens } from "../../lib/api";
+import { useLanguage } from "../../components/LanguageProvider";
 
 export default function LoginPage() {
+  const { locale, setLocale } = useLanguage();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
@@ -24,7 +26,14 @@ export default function LoginPage() {
       }
       window.location.href = "/app/routines";
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "No se pudo iniciar sesion");
+      const msg = error instanceof Error ? error.message : "No se pudo iniciar sesión";
+      setMessage(
+        msg === "Failed to fetch"
+          ? "No se pudo conectar con el servidor. ¿Está la API en ejecución?"
+          : msg === "Invalid credentials"
+            ? "Correo o contraseña incorrectos"
+            : msg
+      );
     }
   };
 
@@ -36,14 +45,16 @@ export default function LoginPage() {
           <nav className="axion-nav">
             <Link className="axion-nav-link is-active" href="/login">Inicio</Link>
             <Link className="axion-nav-link" href="/register">Registro</Link>
-            <Link className="axion-nav-link" href="/coach/routines">Rutinas</Link>
-            <Link className="axion-nav-link" href="/coach">Coach Panel</Link>
-            <Link className="axion-nav-link" href="/coach/ai-logs">AI Logs</Link>
-            <Link className="axion-nav-link" href="/coach/ai-metrics">AI Metrics</Link>
-            <Link className="axion-nav-link" href="/coach/ai-alerts">Alerts</Link>
+            <Link className="axion-nav-link" href="/coach/routines">Coach</Link>
+            <Link className="axion-nav-link" href="/app/routines">Usuario</Link>
           </nav>
           <div className="axion-nav-right">
-            <select className="axion-select" defaultValue="es" aria-label="Idioma">
+            <select
+              className="axion-select"
+              value={locale}
+              onChange={(e) => setLocale(e.target.value as "es" | "en")}
+              aria-label="Idioma"
+            >
               <option value="es">ES</option>
               <option value="en">EN</option>
             </select>

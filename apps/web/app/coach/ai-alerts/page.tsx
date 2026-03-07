@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiRequest } from "../../../lib/api";
+import { CoachOnlyGuard } from "../../../components/CoachOnlyGuard";
 import { useCoachAuth } from "../../../lib/useCoachAuth";
 
 type AiAlert = {
@@ -43,10 +44,11 @@ export default function CoachAiAlertsPage() {
   }
 
   return (
+    <CoachOnlyGuard>
     <section className="axion-page">
       <section className="axion-hero">
-        <h1>AI Alerts</h1>
-        <p>Detecta spikes operativos y señales críticas de seguridad para reaccionar rápido.</p>
+        <h1>Alertas operativas</h1>
+        <p className="axion-muted">Spikes y señales de seguridad para reaccionar rápido.</p>
       </section>
       {message ? <p className="axion-muted">{message}</p> : null}
       <section className="axion-card">
@@ -95,5 +97,6 @@ export default function CoachAiAlertsPage() {
       </div>
       </section>
     </section>
+    </CoachOnlyGuard>
   );
 }

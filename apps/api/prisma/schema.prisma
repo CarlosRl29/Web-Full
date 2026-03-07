@@ -1,10 +1,12 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
 }
 
 enum UserRole {
@@ -42,6 +44,89 @@ enum WorkoutSessionStatus {
   FINISHED
 }
 
+enum MuscleGroup {
+  CHEST
+  BACK
+  SHOULDERS
+  BICEPS
+  TRICEPS
+  QUADS
+  HAMSTRINGS
+  GLUTES
+  CALVES
+  CORE
+}
+
+enum Submuscle {
+  UPPER_CHEST
+  MID_CHEST
+  LOWER_CHEST
+  LATS
+  UPPER_BACK
+  MID_BACK
+  LOWER_BACK
+  TRAPS
+  ANTERIOR_DELTOID
+  LATERAL_DELTOID
+  REAR_DELTOID
+  QUADS
+  HAMSTRINGS
+  GLUTES
+  CALVES
+  ABS
+  OBLIQUES
+  ERECTORS
+  BICEPS
+  TRICEPS
+}
+
+enum MovementPattern {
+  PUSH
+  PULL
+  SQUAT
+  HINGE
+  LUNGE
+  CARRY
+  CORE
+  ISOLATION
+}
+
+enum ExerciseType {
+  COMPOUND
+  ISOLATION
+}
+
+enum ExerciseDifficulty {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum Locale {
+  es
+  en
+}
+
+enum SwapReason {
+  EQUIPMENT_BUSY
+  NOT_AVAILABLE
+  PAIN
+  PREFERENCE
+  TOO_HARD
+}
+
+enum PreferenceType {
+  AVOID
+  PREFER
+}
+
+enum PreferenceReason {
+  EQUIPMENT
+  PAIN
+  PREFERENCE
+  TOO_HARD
+}
+
 model User {
   id                 String           @id @default(uuid())
   email              String           @unique
@@ -54,6 +139,10 @@ model User {
   experience_level   ExperienceLevel?
   days_per_week      Int?
   session_minutes    Int?
+  weight_kg          Float?
+  height_cm          Int?
+  body_fat_pct       Float?
+  age                Int?
   injuries           String?
   equipment          String[]         @default([])
   active_routine_id  String?
@@ -70,21 +159,71 @@ model User {
   ai_recommendation_logs AiRecommendationLog[] @relation("AiRecommendationUser")
   ai_coach_logs          AiRecommendationLog[] @relation("AiRecommendationCoach")
   ai_applied_suggestions AiAppliedSuggestion[] @relation("AiAppliedByUser")
+  ai_routine_generation_logs AiRoutineGenerationLog[]
+  exercise_preferences UserExercisePreference[]
+  training_plans      TrainingPlan[]
+  progress_checkins   ProgressCheckIn[]
   created_at         DateTime         @default(now())
   updated_at         DateTime         @updatedAt
 }
 
 model Exercise {
-  id             String          @id @default(uuid())
-  name           String          @unique
-  muscle_group   String
-  equipment      String?
-  instructions   String?
-  created_by_id  String?
-  created_by     User?           @relation(fields: [created_by_id], references: [id])
-  group_exercise GroupExercise[]
-  created_at     DateTime        @default(now())
-  updated_at     DateTime        @updatedAt
+  id                       String                @id @default(uuid())
+  name                     String                @unique
+  canonical_slug           String?               @unique
+  source                   String?               @default("manual")
+  muscle_group             String
+  sub_muscle               String?
+  body_part                String?
+  equipment                String?
+  instructions             String?
+  media_url                String?
+  primary_muscle           MuscleGroup?
+  primary_submuscle        Submuscle?
+  secondary_muscles        MuscleGroup[]         @default([])
+  movement_pattern        MovementPattern?
+  movement_pattern_secondary MovementPattern[]   @default([])
+  exercise_type            ExerciseType?
+  difficulty               ExerciseDifficulty?
+  exercise_family          String?
+  created_by_id            String?
+  created_by               User?                 @relation(fields: [created_by_id], references: [id])
+  group_exercise           GroupExercise[]
+  muscle_ranks             ExerciseMuscleRank[]
+  translations             ExerciseTranslation[]
+  created_at               DateTime              @default(now())
+  updated_at               DateTime              @updatedAt
+
+  @@index([exercise_family])
+  @@index([movement_pattern, primary_muscle])
+}
+
+model ExerciseMuscleRank {
+  id          String     @id @default(uuid())
+  exercise_id String
+  exercise    Exercise   @relation(fields: [exercise_id], references: [id], onDelete: Cascade)
+  muscle      MuscleGroup
+  rank        Int
+
+  @@unique([exercise_id, muscle])
+  @@index([muscle, rank])
+}
+
+model ExerciseTranslation {
+  id                String   @id @default(uuid())
+  exercise_id       String
+  exercise          Exercise @relation(fields: [exercise_id], references: [id], onDelete: Cascade)
+  locale            Locale
+  name              String
+  short_description String?
+  technique_steps   String[] @default([])
+  cues              String[] @default([])
+  common_mistakes   String[] @default([])
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  @@unique([exercise_id, locale])
+  @@index([exercise_id])
 }
 
 model Routine {
@@ -110,6 +249,7 @@ model Routine {
   active_for_users User[]      @relation("ActiveRoutine")
   reviews     RoutineReview[]
   ai_applied_suggestions AiAppliedSuggestion[]
+  ai_routine_generation_logs AiRoutineGenerationLog[]
   created_at  DateTime         @default(now())
   updated_at  DateTime         @updatedAt
 
@@ -239,6 +379,7 @@ model WorkoutExerciseItem {
   workout_group_id         String
   workout_group            WorkoutGroup @relation(fields: [workout_group_id], references: [id], onDelete: Cascade)
   source_group_exercise_id String
+  exercise_id_override     String?
   order_in_group           String
   target_sets_total        Int
   rep_range                String
@@ -266,6 +407,33 @@ model WorkoutProcessedEvent {
   session WorkoutSession @relation(fields: [session_id], references: [id], onDelete: Cascade)
 
   @@id([session_id, event_id])
+}
+
+model UserExercisePreference {
+  id               String          @id @default(uuid())
+  user_id          String
+  user             User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  exercise_id      String?
+  exercise_family  String?
+  preference_type  PreferenceType
+  reason           PreferenceReason
+  notes            String?
+  created_at       DateTime        @default(now())
+  updated_at       DateTime        @updatedAt
+
+  @@unique([user_id, exercise_id, preference_type])
+  @@index([user_id])
+}
+
+model WorkoutExerciseSwap {
+  id                    String       @id @default(uuid())
+  workout_session_id    String
+  user_id               String
+  original_exercise_id  String
+  replacement_exercise_id String
+  reason                SwapReason
+  saved_preference      Boolean      @default(false)
+  created_at            DateTime     @default(now())
 }
 
 model AiRecommendationLog {
@@ -306,4 +474,94 @@ model AiAppliedSuggestion {
 
   @@index([routine_id, routine_day_id, created_at])
   @@index([ai_log_id, created_at])
+}
+
+model AiRoutineGenerationLog {
+  id                    String   @id @default(uuid())
+  request_id            String?
+  user_id               String
+  user                  User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  generation_input      Json
+  ai_output_raw         Json?
+  validation_errors     String[]
+  final_routine         Json?
+  routine_id            String?
+  routine               Routine? @relation(fields: [routine_id], references: [id], onDelete: SetNull)
+  repair_attempts       Int      @default(0)
+  success               Boolean  @default(false)
+  failure_stage         String?
+  duration_ms           Int?
+  model_name            String?
+  prompt_chars          Int?
+  response_chars        Int?
+  seed_used             String?
+  exercise_library_hash String?
+  knowledge_pack_version String?
+  quality_score         Int?
+  quality_reasons       String[]
+  retrieved_sources     String[] @default([])
+  retrieved_top_k      Int?
+  created_at           DateTime @default(now())
+
+  @@index([user_id, created_at])
+  @@index([request_id])
+}
+
+model KnowledgeDocument {
+  id        String         @id @default(uuid())
+  title     String
+  source    String
+  version   String
+  created_at DateTime      @default(now())
+  chunks    KnowledgeChunk[]
+
+  @@unique([source, version])
+  @@index([version])
+}
+
+model KnowledgeChunk {
+  id          String           @id @default(uuid())
+  document_id String
+  document    KnowledgeDocument @relation(fields: [document_id], references: [id], onDelete: Cascade)
+  chunk_index Int
+  content     String
+  embedding   Unsupported("vector(1536)")?
+  tags        String[]         @default([])
+  created_at  DateTime         @default(now())
+
+  @@index([document_id])
+}
+
+model TrainingPlan {
+  id             String   @id @default(uuid())
+  user_id        String
+  user           User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  goal           String
+  priority_area  String
+  start_date     DateTime
+  weeks_total    Int
+  milestones     Json?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  @@index([user_id])
+}
+
+model ProgressCheckIn {
+  id                    String   @id @default(uuid())
+  user_id               String
+  user                  User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  fatigue               Int
+  pain_location         String
+  sleep_quality         String
+  difficulty            String
+  readiness_modifier    Float
+  block_volume_increases Boolean @default(false)
+  avoid_overhead_pressing Boolean @default(false)
+  reduce_squat_volume   Boolean @default(false)
+  reduce_hinge_compounds Boolean @default(false)
+  created_at            DateTime @default(now())
+
+  @@index([user_id])
+  @@index([user_id, created_at])
 }

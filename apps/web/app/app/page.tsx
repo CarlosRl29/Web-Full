@@ -49,8 +49,7 @@ export default function AppIndexPage() {
       <section className="axion-hero">
         <h1>Inicio</h1>
         <p>
-          Consulta tu rutina activa, revisa asignaciones recientes y descubre nuevos planes en el
-          marketplace.
+          Consulta tu rutina activa y revisa asignaciones recientes.
         </p>
       </section>
 
@@ -60,7 +59,7 @@ export default function AppIndexPage() {
         {!activeRoutine ? (
           <div className="axion-empty">
             <strong>No tienes rutina activa</strong>
-            <p>Activa una desde “Mis rutinas” para iniciar rápido cada entrenamiento.</p>
+            <p>Activa una desde “Mis rutinas” Solo puedes tener 1 rutina activa; la app del celular usará esa para entrenar.</p>
             <div style={{ marginTop: 12 }}>
               <Link className="axion-button axion-button-primary" href="/app/routines">
                 Ir a mis rutinas
@@ -76,6 +75,7 @@ export default function AppIndexPage() {
             <button
               className="axion-button axion-button-primary"
               onClick={() => setShowTrainInfo(true)}
+              title="Entrena desde la app AXION (web planea, móvil entrena)"
             >
               Entrenar
             </button>
@@ -106,6 +106,7 @@ export default function AppIndexPage() {
                 <button
                   className="axion-button axion-button-secondary"
                   onClick={() => setShowTrainInfo(true)}
+                  title="Entrena desde la app AXION (web planea, móvil entrena)"
                 >
                   Entrenar
                 </button>
@@ -115,15 +116,7 @@ export default function AppIndexPage() {
         )}
       </section>
 
-      <section className="axion-card">
-        <h2>Marketplace</h2>
-        <p className="axion-muted">Descubre rutinas públicas creadas por coaches y guárdalas en tu biblioteca.</p>
-        <div style={{ marginTop: 12 }}>
-          <Link className="axion-button axion-button-primary" href="/marketplace">
-            Descubrir rutinas de coaches
-          </Link>
-        </div>
-      </section>
+      {/* AXION v2 minimal: marketplace disabled */}
       <MobileTrainInfoModal open={showTrainInfo} onClose={() => setShowTrainInfo(false)} />
     </section>
   );

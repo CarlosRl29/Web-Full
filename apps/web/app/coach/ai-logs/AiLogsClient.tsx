@@ -152,8 +152,8 @@ export default function AiLogsClient() {
   return (
     <section className="axion-page">
       <section className="axion-hero">
-        <h1>AI Logs</h1>
-        <p>Audita decisiones de recomendación, seguridad y uso operativo en un solo flujo.</p>
+        <h1>Historial de recomendaciones generadas y su explicación</h1>
+        <p className="axion-muted">Audita decisiones AI, seguridad y uso operativo.</p>
       </section>
       {message ? <p className="axion-muted">{message}</p> : null}
       <section className="axion-card">

@@ -164,16 +164,25 @@ export function RestTimer({ label, seconds, onDone }: Props) {
     scheduleNotification(endAtRef.current);
   };
 
+  const handleReset = () => {
+    if (completedRef.current) return;
+    endAtRef.current = Date.now() + seconds * 1000;
+    scheduleNotification(endAtRef.current);
+  };
+
   return (
     <View style={styles.wrapper}>
       <Text style={styles.title}>{label}</Text>
       <Text style={styles.time}>{display}</Text>
       <View style={styles.row}>
         <Pressable onPress={handleSkip} style={styles.secondaryBtn}>
-          <Text style={styles.secondaryText}>Skip</Text>
+          <Text style={styles.secondaryText}>Saltar</Text>
         </Pressable>
         <Pressable onPress={handleAdd15s} style={styles.primaryBtn}>
           <Text style={styles.primaryText}>+15s</Text>
+        </Pressable>
+        <Pressable onPress={handleReset} style={styles.secondaryBtn}>
+          <Text style={styles.secondaryText}>Reiniciar</Text>
         </Pressable>
       </View>
     </View>

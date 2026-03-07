@@ -1,6 +1,7 @@
 "use client";
 
 import { RoutineBuilder } from "../../../../components/builder/RoutineBuilder";
+import { RoutineCreatorErrorBoundary } from "../../../../components/RoutineCreatorErrorBoundary";
 import { useAppAuth } from "../../../../lib/useAppAuth";
 
 export default function NewRoutinePage() {
@@ -13,5 +14,9 @@ export default function NewRoutinePage() {
     return <p className="axion-loading">Validando sesión...</p>;
   }
 
-  return <RoutineBuilder token={token} />;
+  return (
+    <RoutineCreatorErrorBoundary>
+      <RoutineBuilder token={token} />
+    </RoutineCreatorErrorBoundary>
+  );
 }

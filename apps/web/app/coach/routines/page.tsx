@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   createEmptyRoutine,
@@ -7,8 +8,10 @@ import {
   RoutineDraft,
   RoutineEditor
 } from "../../../components/RoutineEditor";
+import { PublishRoutineModal } from "../../../components/PublishRoutineModal";
 import { apiRequest } from "../../../lib/api";
 import { useCoachAuth } from "../../../lib/useCoachAuth";
+import { useLanguage } from "../../../components/LanguageProvider";
 import { AiPlanSuggestion, AiRecommendationResponse } from "@gym/shared";
 import { useToast } from "../../../components/ToastProvider";
 import { useUnsavedChanges } from "../../../components/UnsavedChangesProvider";
@@ -22,6 +25,7 @@ const ORDER_BY_TYPE: Record<"SINGLE" | "SUPERSET_2" | "SUPERSET_3", Array<"A1" |
 
 export default function CoachRoutinesPage() {
   const { token, loading } = useCoachAuth();
+  const { locale } = useLanguage();
   const { showToast } = useToast();
   const { hasUnsavedChanges, setHasUnsavedChanges } = useUnsavedChanges();
   const [routines, setRoutines] = useState<any[]>([]);
@@ -49,11 +53,12 @@ export default function CoachRoutinesPage() {
     marketplace_description: "",
     marketplace_tags: ""
   });
+  const [publishModalRoutine, setPublishModalRoutine] = useState<any | null>(null);
 
   const loadData = async (accessToken: string) => {
     const [routineData, exerciseData] = await Promise.all([
       apiRequest<any[]>("/routines", {}, accessToken),
-      apiRequest<Exercise[]>("/exercises?limit=200", {}, accessToken)
+      apiRequest<Exercise[]>(`/exercises?limit=500&locale=${locale}`, {}, accessToken)
     ]);
     setRoutines(routineData);
     setExercises(exerciseData);
@@ -64,7 +69,7 @@ export default function CoachRoutinesPage() {
       return;
     }
     void loadData(token);
-  }, [token]);
+  }, [token, locale]);
 
   const isDirty = useMemo(
     () => JSON.stringify(draft) !== JSON.stringify(lastSavedDraft),
@@ -464,61 +469,66 @@ export default function CoachRoutinesPage() {
     }
   };
 
-  const publishRoutine = async () => {
-    if (!token || !draft.id) {
-      setMessage("Guarda la rutina antes de publicarla.");
-      showToast("info", "Guarda primero la rutina.");
-      return;
-    }
-    const requiredMissing =
-      !publishMeta.marketplace_goal.trim() ||
-      !publishMeta.marketplace_level.trim() ||
-      !publishMeta.marketplace_description.trim() ||
-      !Number.isFinite(Number(publishMeta.marketplace_days_per_week)) ||
-      Number(publishMeta.marketplace_days_per_week) <= 0 ||
-      !Number.isFinite(Number(publishMeta.marketplace_duration_weeks)) ||
-      Number(publishMeta.marketplace_duration_weeks) <= 0;
+  const publishRoutineFromModal = async (routineId: string, meta: {
+    marketplace_title: string;
+    marketplace_goal: string;
+    marketplace_level: string;
+    marketplace_days_per_week: number;
+    marketplace_duration_weeks: number;
+    marketplace_description: string;
+    marketplace_tags: string;
+  }) => {
+    if (!token) return;
+    await apiRequest(
+      `/routines/${routineId}/publish`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          is_public: true,
+          marketplace_title: meta.marketplace_title,
+          marketplace_goal: meta.marketplace_goal,
+          marketplace_level: meta.marketplace_level,
+          marketplace_days_per_week: meta.marketplace_days_per_week,
+          marketplace_duration_weeks: meta.marketplace_duration_weeks,
+          marketplace_description: meta.marketplace_description,
+          marketplace_tags: meta.marketplace_tags
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean)
+        })
+      },
+      token
+    );
+    showToast("success", "Rutina publicada en marketplace.");
+    setPublishModalRoutine(null);
+    void loadData(token);
+  };
 
-    if (publishMeta.is_public && requiredMissing) {
-      const warn = "Completa esto para publicar: objetivo, nivel, días/semana, duración y descripción.";
-      setMessage(warn);
-      showToast("error", warn);
-      return;
-    }
-
+  const retractRoutine = async (routine: { id: string; name: string }) => {
+    if (!token) return;
     try {
       await apiRequest(
-        `/routines/${draft.id}/publish`,
+        `/routines/${routine.id}/publish`,
         {
           method: "PATCH",
           body: JSON.stringify({
-            is_public: publishMeta.is_public,
-            marketplace_title: publishMeta.marketplace_title || draft.name,
-            marketplace_goal: publishMeta.marketplace_goal,
-            marketplace_level: publishMeta.marketplace_level,
-            marketplace_days_per_week: Number(publishMeta.marketplace_days_per_week),
-            marketplace_duration_weeks: Number(publishMeta.marketplace_duration_weeks),
-            marketplace_description: publishMeta.marketplace_description || draft.description,
-            marketplace_tags: publishMeta.marketplace_tags
-              .split(",")
-              .map((item) => item.trim())
-              .filter(Boolean)
+            is_public: false,
+            marketplace_title: routine.name || "Rutina",
+            marketplace_goal: "General",
+            marketplace_level: "N/A",
+            marketplace_days_per_week: 1,
+            marketplace_duration_weeks: 1,
+            marketplace_description: "Retirada de marketplace",
+            marketplace_tags: []
           })
         },
         token
       );
-      showToast(
-        "success",
-        publishMeta.is_public
-          ? "Rutina publicada en marketplace."
-          : "Rutina retirada de marketplace."
-      );
-      setMessage(
-        publishMeta.is_public ? "Rutina publicada." : "Rutina retirada de marketplace."
-      );
+      showToast("success", "Rutina retirada del marketplace.");
+      void loadData(token);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "No se pudo publicar rutina");
-      showToast("error", "No se pudo publicar.");
+      const text = error instanceof Error ? error.message : "No se pudo retirar.";
+      showToast("error", text);
     }
   };
 
@@ -567,18 +577,58 @@ export default function CoachRoutinesPage() {
       ) : (
         <ul className="axion-list">
           {routines.map((routine) => (
-            <li key={routine.id} className="axion-list-item">
-              <strong>{routine.name}</strong>
-              <div>
+            <li key={routine.id} className="axion-list-item" style={{ flexWrap: "wrap", gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <strong>{routine.name}</strong>
+                {routine.is_public ? (
+                  <span className="axion-pill" style={{ marginLeft: 8, background: "rgba(16,185,129,0.2)", color: "#10b981" }}>
+                    Publicada
+                  </span>
+                ) : (
+                  <span className="axion-pill" style={{ marginLeft: 8 }}>No publicada</span>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button className="axion-button axion-button-secondary" onClick={() => hydrateDraftFromRoutine(routine)}>
                   Editar
                 </button>
+                {routine.is_public ? (
+                  <>
+                    <button
+                      className="axion-button axion-button-secondary"
+                      onClick={() => void retractRoutine(routine)}
+                    >
+                      Retirar
+                    </button>
+                    <Link
+                      className="axion-button axion-button-secondary"
+                      href={`/marketplace/${routine.id}`}
+                    >
+                      Ver en marketplace
+                    </Link>
+                  </>
+                ) : (
+                  <button
+                    className="axion-button axion-button-primary"
+                    onClick={() => setPublishModalRoutine(routine)}
+                  >
+                    Publicar
+                  </button>
+                )}
               </div>
             </li>
           ))}
         </ul>
       )}
       </section>
+
+      {publishModalRoutine ? (
+        <PublishRoutineModal
+          routine={publishModalRoutine}
+          onClose={() => setPublishModalRoutine(null)}
+          onPublish={(meta) => publishRoutineFromModal(publishModalRoutine.id, meta)}
+        />
+      ) : null}
 
       <section className="axion-card" style={{ padding: 12 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
@@ -616,64 +666,6 @@ export default function CoachRoutinesPage() {
           ))}
         </section>
       ) : null}
-
-      <section className="axion-card" style={{ marginTop: 20 }}>
-        <h2>Publicar en Marketplace</h2>
-        <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
-          <label className="axion-muted" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <input
-              type="checkbox"
-              checked={publishMeta.is_public}
-              onChange={(e) =>
-                setPublishMeta((prev) => ({ ...prev, is_public: e.target.checked }))
-              }
-            />
-            Publicar en marketplace
-          </label>
-          <input
-            className="axion-input"
-            placeholder="Título público"
-            value={publishMeta.marketplace_title}
-            onChange={(e) => setPublishMeta((prev) => ({ ...prev, marketplace_title: e.target.value }))}
-          />
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-            <input
-              className="axion-input"
-              placeholder="Goal"
-              value={publishMeta.marketplace_goal}
-              onChange={(e) => setPublishMeta((prev) => ({ ...prev, marketplace_goal: e.target.value }))}
-            />
-            <input
-              className="axion-input"
-              placeholder="Nivel"
-              value={publishMeta.marketplace_level}
-              onChange={(e) => setPublishMeta((prev) => ({ ...prev, marketplace_level: e.target.value }))}
-            />
-            <input
-              className="axion-input"
-              type="number"
-              placeholder="Días/semana"
-              value={publishMeta.marketplace_days_per_week}
-              onChange={(e) => setPublishMeta((prev) => ({ ...prev, marketplace_days_per_week: Number(e.target.value) }))}
-            />
-          </div>
-          <input
-            className="axion-input"
-            placeholder="Descripción pública"
-            value={publishMeta.marketplace_description}
-            onChange={(e) => setPublishMeta((prev) => ({ ...prev, marketplace_description: e.target.value }))}
-          />
-          <input
-            className="axion-input"
-            placeholder="Tags separadas por coma"
-            value={publishMeta.marketplace_tags}
-            onChange={(e) => setPublishMeta((prev) => ({ ...prev, marketplace_tags: e.target.value }))}
-          />
-          <button className="axion-button axion-button-secondary" onClick={() => void publishRoutine()}>
-            {publishMeta.is_public ? "Publicar rutina" : "Guardar como no pública"}
-          </button>
-        </div>
-      </section>
 
       <section className="axion-card" style={{ marginTop: 20 }}>
         <h2>AI Sugerencias</h2>

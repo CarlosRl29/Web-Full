@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: gym-postgres
     environment:
       POSTGRES_DB: gym_app
@@ -10,6 +10,7 @@ services:
       - "5432:5432"
     volumes:
       - gym_pg_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U gym -d gym_app"]
       interval: 10s
@@ -26,9 +27,12 @@ services:
         condition: service_healthy
     env_file:
       - .env
+    environment:
+      # Override: use postgres host when running inside container (not localhost)
+      DATABASE_URL: postgresql://gym:gym@postgres:5432/gym_app?schema=public
     ports:
       - "3001:3001"
-    command: sh -c "npm run db:generate -w apps/api && npm run db:migrate:deploy -w apps/api && npm run start:prod -w apps/api"
+    command: sh -c "npm run build -w @gym/api && npm run db:generate -w apps/api && npm run db:migrate:deploy -w apps/api && npm run start:prod -w apps/api"
 
 volumes:
   gym_pg_data:

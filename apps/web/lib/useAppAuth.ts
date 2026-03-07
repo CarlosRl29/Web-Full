@@ -14,6 +14,10 @@ export type MeProfile = {
   experience_level: "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | null;
   days_per_week: number | null;
   session_minutes: number | null;
+  weight_kg: number | null;
+  height_cm: number | null;
+  body_fat_pct: number | null;
+  age: number | null;
   injuries: string | null;
   equipment: string[];
   active_routine_id: string | null;

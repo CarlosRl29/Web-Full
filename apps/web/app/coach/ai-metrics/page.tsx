@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiRequest } from "../../../lib/api";
+import { CoachOnlyGuard } from "../../../components/CoachOnlyGuard";
 import { useCoachAuth } from "../../../lib/useCoachAuth";
 
 type AiMetrics = {
@@ -40,10 +41,11 @@ export default function CoachAiMetricsPage() {
   }
 
   return (
+    <CoachOnlyGuard>
     <section className="axion-page">
       <section className="axion-hero">
-        <h1>AI Metrics</h1>
-        <p>Monitorea ahorro por dedup, presión de límites y eficiencia de recomendaciones.</p>
+        <h1>Resumen de uso y ahorro de recomendaciones</h1>
+        <p className="axion-muted">Métricas operativas: ahorro por dedup, límites y eficiencia.</p>
       </section>
       {message ? <p className="axion-muted">{message}</p> : null}
       <section className="axion-card">
@@ -86,5 +88,6 @@ export default function CoachAiMetricsPage() {
       )}
       </section>
     </section>
+    </CoachOnlyGuard>
   );
 }

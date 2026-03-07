@@ -1,12 +1,12 @@
-import React, { ReactNode } from "react";
+import type { ReactNode } from "react";
 import "./globals.css";
-import { ToastProvider } from "../components/ToastProvider";
+import { Providers } from "./providers";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="es">
       <body>
-        <ToastProvider>{children}</ToastProvider>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

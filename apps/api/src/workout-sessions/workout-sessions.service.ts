@@ -14,6 +14,24 @@ const defaultPointer = {
   round_index: 0
 };
 
+const MUSCLE_LABELS_ES: Record<string, string> = {
+  CHEST: "Pectorales",
+  BACK: "Espalda",
+  SHOULDERS: "Hombros",
+  BICEPS: "Bíceps",
+  TRICEPS: "Tríceps",
+  QUADS: "Cuádriceps",
+  HAMSTRINGS: "Isquiotibiales",
+  GLUTES: "Glúteos",
+  CALVES: "Gemelos",
+  CORE: "Core"
+};
+
+function getMuscleLabel(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return MUSCLE_LABELS_ES[value] ?? value.replace(/_/g, " ");
+}
+
 @Injectable()
 export class WorkoutSessionsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -39,7 +57,9 @@ export class WorkoutSessionsService {
       workout_groups: Array<{
         source_group_id: string;
         workout_items: Array<{
+          id: string;
           source_group_exercise_id: string;
+          exercise_id_override?: string | null;
           exercise_name?: string | null;
           exercise_description?: string | null;
           exercise_media_url?: string | null;
@@ -59,8 +79,28 @@ export class WorkoutSessionsService {
       }
     });
 
+    const overrideIds = session.workout_groups.flatMap((g) =>
+      g.workout_items.map((i) => i.exercise_id_override).filter(Boolean)
+    ) as string[];
+    const overrideExercises =
+      overrideIds.length > 0
+        ? await this.prisma.exercise.findMany({
+            where: { id: { in: overrideIds } }
+          })
+        : [];
+    const overrideById = Object.fromEntries(overrideExercises.map((e) => [e.id, e]));
+
     const exerciseMetaByGroupExerciseId = groups.reduce<
-      Record<string, { name: string; description: string | null; media_url: string | null }>
+      Record<
+        string,
+        {
+          name: string;
+          description: string | null;
+          media_url: string | null;
+          primary_muscle: string | null;
+          primary_muscle_label: string | null;
+        }
+      >
     >(
       (acc, group) => {
         group.exercises.forEach((groupExercise) => {
@@ -70,37 +110,59 @@ export class WorkoutSessionsService {
             media_url?: string | null;
             image_url?: string | null;
             video_url?: string | null;
+            primary_muscle?: string | null;
           };
           acc[groupExercise.id] = {
             name: exercise.name,
             description: exercise.instructions ?? null,
-            media_url: exercise.video_url ?? exercise.image_url ?? exercise.media_url ?? null
+            media_url: exercise.video_url ?? exercise.image_url ?? exercise.media_url ?? null,
+            primary_muscle: exercise.primary_muscle ?? null,
+            primary_muscle_label: getMuscleLabel(exercise.primary_muscle)
           };
         });
         return acc;
       },
-      {} as Record<string, { name: string; description: string | null; media_url: string | null }>
+      {} as Record<
+        string,
+        {
+          name: string;
+          description: string | null;
+          media_url: string | null;
+          primary_muscle: string | null;
+          primary_muscle_label: string | null;
+        }
+      >
     );
+
+    const overrideMeta = (ex: { primary_muscle?: string | null }) => ({
+      primary_muscle: ex.primary_muscle ?? null,
+      primary_muscle_label: getMuscleLabel(ex.primary_muscle)
+    });
 
     return {
       ...session,
       workout_groups: session.workout_groups.map((group) => ({
         ...group,
-        workout_items: group.workout_items.map((item) => ({
-          ...item,
-          exercise_name:
-            exerciseMetaByGroupExerciseId[item.source_group_exercise_id]?.name ??
-            item.exercise_name ??
-            null,
-          exercise_description:
-            exerciseMetaByGroupExerciseId[item.source_group_exercise_id]?.description ??
-            item.exercise_description ??
-            null,
-          exercise_media_url:
-            exerciseMetaByGroupExerciseId[item.source_group_exercise_id]?.media_url ??
-            item.exercise_media_url ??
-            null
-        }))
+        workout_items: group.workout_items.map((item) => {
+          const override = item.exercise_id_override
+            ? overrideById[item.exercise_id_override]
+            : null;
+          const meta = override
+            ? {
+                name: override.name,
+                description: override.instructions ?? null,
+                media_url: override.media_url ?? null,
+                ...overrideMeta(override as { primary_muscle?: string | null })
+              }
+            : exerciseMetaByGroupExerciseId[item.source_group_exercise_id];
+          return {
+            ...item,
+            exercise_name: meta?.name ?? item.exercise_name ?? null,
+            exercise_description: meta?.description ?? item.exercise_description ?? null,
+            exercise_media_url: meta?.media_url ?? item.exercise_media_url ?? null,
+            primary_muscle_label: meta?.primary_muscle_label ?? null
+          };
+        })
       }))
     } as T;
   }
@@ -362,8 +424,21 @@ export class WorkoutSessionsService {
       data: {
         status: "FINISHED",
         ended_at: new Date()
+      },
+      include: {
+        routine: { select: { name: true } },
+        routine_day: { select: { day_label: true } },
+        workout_groups: {
+          include: {
+            workout_items: {
+              include: { sets: true },
+              orderBy: { order_in_group: "asc" }
+            }
+          },
+          orderBy: { order_index: "asc" }
+        }
       }
     });
-    return finished;
+    return this.withExerciseDetails(finished);
   }
 }

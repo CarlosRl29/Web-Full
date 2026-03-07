@@ -2,6 +2,7 @@
 
 import { DndContext, DragEndEvent, PointerSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AiPlanSuggestion, AiRecommendationResponse, SUBMUSCLE_TO_MUSCLE } from "@gym/shared";
 import { apiRequest } from "../../lib/api";
 import {
   BuilderExercise,
@@ -10,11 +11,18 @@ import {
 } from "../../lib/useRoutineBuilderDraft";
 import { useToast } from "../ToastProvider";
 import { useUnsavedChanges } from "../UnsavedChangesProvider";
+import { useLanguage } from "../LanguageProvider";
 import { ExerciseLibrary } from "./ExerciseLibrary";
+import { GenerateRoutineModal } from "./GenerateRoutineModal";
 import { MiniEditModal } from "./MiniEditModal";
 import { RoutineDrawer } from "./RoutineDrawer";
 import { RoutinePanel } from "./RoutinePanel";
 import { TechniqueModal } from "./TechniqueModal";
+import {
+  type BuilderProfile,
+  mapMeToBuilderProfile,
+  builderProfileToDefaultProfile
+} from "../../lib/builderProfile";
 
 type Props = {
   token: string;
@@ -23,6 +31,7 @@ type Props = {
 
 export function RoutineBuilder({ token, initialRoutineId }: Props) {
   const { showToast } = useToast();
+  const { locale } = useLanguage();
   const { hasUnsavedChanges, setHasUnsavedChanges } = useUnsavedChanges();
   const {
     draft,
@@ -50,14 +59,23 @@ export function RoutineBuilder({ token, initialRoutineId }: Props) {
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filters, setFilters] = useState({ muscle: "", submuscle: "", type: "" });
-  const [limit, setLimit] = useState(25);
+  const [limit, setLimit] = useState(100);
   const [loadingExercises, setLoadingExercises] = useState(false);
   const [allExercises, setAllExercises] = useState<BuilderExercise[]>([]);
+  const [filterOptions, setFilterOptions] = useState<{
+    muscles: Array<{ value: string; label: string }>;
+    submuscles: Array<{ value: string; label: string }>;
+    types: Array<{ value: string; label: string }>;
+  }>({ muscles: [], submuscles: [], types: [] });
   const [showDrawer, setShowDrawer] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiData, setAiData] = useState<AiRecommendationResponse | null>(null);
   const [techniqueExercise, setTechniqueExercise] = useState<BuilderExercise | null>(null);
   const [editingItem, setEditingItem] = useState<RoutineBuilderItem | null>(null);
   const [pendingDuplicate, setPendingDuplicate] = useState<BuilderExercise | null>(null);
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [userProfile, setUserProfile] = useState<BuilderProfile | null>(null);
 
   const lastDropRef = useRef<{ id: string; at: number } | null>(null);
 
@@ -66,7 +84,16 @@ export function RoutineBuilder({ token, initialRoutineId }: Props) {
     return () => window.clearTimeout(timeout);
   }, [searchInput]);
 
+  const hasSearchCriteria = Boolean(
+    debouncedSearch.trim() || filters.muscle || filters.submuscle || filters.type
+  );
+
   const fetchExercises = useCallback(async () => {
+    if (!hasSearchCriteria) {
+      setAllExercises([]);
+      setLoadingExercises(false);
+      return;
+    }
     setLoadingExercises(true);
     try {
       const params = new URLSearchParams();
@@ -74,6 +101,12 @@ export function RoutineBuilder({ token, initialRoutineId }: Props) {
         params.set("search", debouncedSearch.trim());
       }
       params.set("limit", String(limit));
+      if (filters.muscle) params.set("muscle", filters.muscle);
+      if (filters.submuscle && (!filters.muscle || SUBMUSCLE_TO_MUSCLE[filters.submuscle] === filters.muscle)) {
+        params.set("submuscle", filters.submuscle);
+      }
+      if (filters.type) params.set("equipment", filters.type);
+      params.set("locale", locale);
       const list = await apiRequest<BuilderExercise[]>(`/exercises?${params.toString()}`, {}, token);
       setAllExercises(list);
     } catch (error) {
@@ -81,11 +114,27 @@ export function RoutineBuilder({ token, initialRoutineId }: Props) {
     } finally {
       setLoadingExercises(false);
     }
-  }, [debouncedSearch, limit, showToast, token]);
+  }, [hasSearchCriteria, debouncedSearch, limit, filters.muscle, filters.submuscle, filters.type, locale, showToast, token]);
 
   useEffect(() => {
     void fetchExercises();
   }, [fetchExercises]);
+
+  useEffect(() => {
+    void apiRequest<{
+      muscles: Array<{ value: string; label: string }>;
+      submuscles: Array<{ value: string; label: string }>;
+      types: Array<{ value: string; label: string }>;
+    }>("/exercises/filter-options", {}, token)
+      .then(setFilterOptions)
+      .catch(() => {});
+  }, [token]);
+
+  useEffect(() => {
+    void apiRequest<unknown>("/auth/me", {}, token)
+      .then((me) => setUserProfile(mapMeToBuilderProfile(me)))
+      .catch(() => {});
+  }, [token]);
 
   useEffect(() => {
     if (!initialRoutineId) {
@@ -118,44 +167,7 @@ export function RoutineBuilder({ token, initialRoutineId }: Props) {
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [internalDirty]);
 
-  const filteredExercises = useMemo(() => {
-    return allExercises.filter((exercise) => {
-      const muscle = (exercise.muscle_group ?? "").toLowerCase();
-      const submuscle = (exercise.submuscle ?? exercise.muscle_group ?? "").toLowerCase();
-      const type = (exercise.type ?? exercise.equipment ?? "General").toLowerCase();
-      if (filters.muscle && muscle !== filters.muscle.toLowerCase()) {
-        return false;
-      }
-      if (filters.submuscle && submuscle !== filters.submuscle.toLowerCase()) {
-        return false;
-      }
-      if (filters.type && type !== filters.type.toLowerCase()) {
-        return false;
-      }
-      return true;
-    });
-  }, [allExercises, filters.muscle, filters.submuscle, filters.type]);
-
-  const filterOptions = useMemo(() => {
-    const muscles = new Set<string>();
-    const submuscles = new Set<string>();
-    const types = new Set<string>();
-    allExercises.forEach((exercise) => {
-      if (exercise.muscle_group) {
-        muscles.add(exercise.muscle_group);
-      }
-      if (exercise.submuscle) {
-        submuscles.add(exercise.submuscle);
-      }
-      const inferredType = exercise.type ?? exercise.equipment ?? "General";
-      types.add(inferredType);
-    });
-    return {
-      muscles: Array.from(muscles).sort((a, b) => a.localeCompare(b)),
-      submuscles: Array.from(submuscles).sort((a, b) => a.localeCompare(b)),
-      types: Array.from(types).sort((a, b) => a.localeCompare(b))
-    };
-  }, [allExercises]);
+  const filteredExercises = allExercises;
 
   const addAndEdit = useCallback(
     (exercise: BuilderExercise) => {
@@ -269,11 +281,77 @@ export function RoutineBuilder({ token, initialRoutineId }: Props) {
     }
   };
 
+  const mapGoal = () => {
+    if (draft.week_goal === "FUERZA") {
+      return "STRENGTH" as const;
+    }
+    if (draft.week_goal === "HIPERTROFIA") {
+      return "HYPERTROPHY" as const;
+    }
+    return "MIXED" as const;
+  };
+
+  const generateSuggestions = async () => {
+    setAiLoading(true);
+    try {
+      const me = await apiRequest<unknown>("/auth/me", {}, token);
+      const profile = mapMeToBuilderProfile(me);
+
+      const response = await apiRequest<AiRecommendationResponse>(
+        "/ai/recommendations",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            profile: {
+              experience_level: profile.experienceLevel ?? "INTERMEDIATE",
+              goal: profile.goal ?? mapGoal(),
+              days_per_week: profile.daysPerWeek ?? 4
+            },
+            constraints: {
+              injuries: profile.injuries ?? undefined,
+              equipment: profile.equipment.length > 0 ? profile.equipment : undefined,
+              session_minutes: profile.sessionMinutes ?? undefined
+            },
+            context: { window_days: 28 }
+          })
+        },
+        token
+      );
+      setAiData(response);
+      showToast("success", "Sugerencias IA generadas.");
+    } catch (error) {
+      showToast("error", error instanceof Error ? error.message : "No se pudieron generar sugerencias IA");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const applySuggestion = (suggestion: AiPlanSuggestion) => {
+    activeDay.items.forEach((item) => {
+      const nextRepsMin = Math.max(1, item.reps_min + suggestion.rep_min_delta);
+      const nextRepsMax = Math.max(nextRepsMin, item.reps_max + suggestion.rep_max_delta);
+      updateItem(item.instance_id, {
+        sets: Math.max(1, item.sets + suggestion.set_delta),
+        reps_min: nextRepsMin,
+        reps_max: nextRepsMax,
+        rest_seconds: suggestion.rest_after_set_seconds ?? item.rest_seconds
+      });
+    });
+    showToast("info", `Sugerencia aplicada: ${suggestion.title}`);
+  };
+
   return (
     <section className="axion-page">
       <section className="axion-hero">
         <h1>Creador de Rutinas</h1>
         <p>Construye tu semana arrastrando ejercicios y ajustando cada detalle de forma visual.</p>
+        <button
+          className="axion-button axion-button-primary"
+          style={{ marginTop: 12 }}
+          onClick={() => setShowGenerateModal(true)}
+        >
+          Generar rutina con IA
+        </button>
       </section>
 
       <section className="axion-card" style={{ padding: 12 }}>
@@ -302,6 +380,7 @@ export function RoutineBuilder({ token, initialRoutineId }: Props) {
             onLoadMore={() => setLimit((prev) => prev + 25)}
             onOpenTechnique={setTechniqueExercise}
             onAddTemplate={requestAddExercise}
+            hasSearchCriteria={hasSearchCriteria}
           />
 
           <div className="axion-builder-desktop-panel">
@@ -315,12 +394,35 @@ export function RoutineBuilder({ token, initialRoutineId }: Props) {
               onEditItem={setEditingItem}
               onRemoveItem={(item) => removeItem(item.instance_id)}
               onSave={() => void saveRoutine()}
+              onGenerateSuggestions={() => void generateSuggestions()}
               onClear={clearActiveDay}
               saving={saving}
+              aiLoading={aiLoading}
             />
           </div>
         </section>
       </DndContext>
+
+      {aiData ? (
+        <section className="axion-card" style={{ marginTop: 14 }}>
+          <h2>Sugerencias IA</h2>
+          {aiData.safety_flags.length > 0 ? (
+            <p className="axion-muted">Flags: {aiData.safety_flags.join(", ")}</p>
+          ) : null}
+          <p className="axion-muted" style={{ marginTop: 8 }}>{aiData.recommendation_summary}</p>
+          <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+            {aiData.plan_suggestions.map((suggestion) => (
+              <article key={suggestion.id} className="axion-card" style={{ padding: 12, background: "rgba(255,255,255,0.02)" }}>
+                <strong>{suggestion.title}</strong>
+                <p className="axion-muted" style={{ marginTop: 6 }}>{suggestion.description}</p>
+                <button className="axion-button axion-button-secondary" style={{ marginTop: 8 }} onClick={() => applySuggestion(suggestion)}>
+                  Aplicar sugerencia
+                </button>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <button className="axion-button axion-button-primary axion-builder-fab" onClick={() => setShowDrawer(true)}>
         Mi Rutina
@@ -337,12 +439,26 @@ export function RoutineBuilder({ token, initialRoutineId }: Props) {
           onEditItem={setEditingItem}
           onRemoveItem={(item) => removeItem(item.instance_id)}
           onSave={() => void saveRoutine()}
+          onGenerateSuggestions={() => void generateSuggestions()}
           onClear={clearActiveDay}
           saving={saving}
+          aiLoading={aiLoading}
         />
       </RoutineDrawer>
 
       <TechniqueModal exercise={techniqueExercise} onClose={() => setTechniqueExercise(null)} />
+      {showGenerateModal ? (
+        <GenerateRoutineModal
+          token={token}
+          onClose={() => setShowGenerateModal(false)}
+          onGenerated={(routine) => {
+            loadRoutine(routine);
+            setShowGenerateModal(false);
+            showToast("success", "Rutina generada. Revisa y guarda cuando estés listo.");
+          }}
+          defaultProfile={builderProfileToDefaultProfile(userProfile)}
+        />
+      ) : null}
       <MiniEditModal
         item={editingItem}
         onCancel={() => setEditingItem(null)}

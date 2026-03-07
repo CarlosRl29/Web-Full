@@ -23,7 +23,8 @@ export class AuthService {
   ) {}
 
   async register(input: RegisterInput) {
-    const found = await this.prisma.user.findUnique({ where: { email: input.email } });
+    const normalizedEmail = input.email.trim().toLowerCase();
+    const found = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (found) {
       throw new ConflictException("Email already in use");
     }
@@ -44,7 +45,7 @@ export class AuthService {
 
     const user = await this.prisma.user.create({
       data: {
-        email: input.email,
+        email: normalizedEmail,
         full_name: input.full_name,
         role,
         preferred_modes: preferredModes,
@@ -57,7 +58,8 @@ export class AuthService {
   }
 
   async login(input: LoginInput) {
-    const user = await this.prisma.user.findUnique({ where: { email: input.email } });
+    const normalizedEmail = input.email.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (!user) {
       throw new UnauthorizedException("Invalid credentials");
     }
@@ -106,6 +108,10 @@ export class AuthService {
         experience_level: true,
         days_per_week: true,
         session_minutes: true,
+        weight_kg: true,
+        height_cm: true,
+        body_fat_pct: true,
+        age: true,
         injuries: true,
         equipment: true,
         active_routine_id: true,
@@ -127,6 +133,10 @@ export class AuthService {
         experience_level: input.experience_level as ExperienceLevel,
         days_per_week: input.days_per_week,
         session_minutes: input.session_minutes,
+        weight_kg: input.weight_kg,
+        height_cm: input.height_cm,
+        body_fat_pct: input.body_fat_pct,
+        age: input.age,
         injuries: input.injuries,
         equipment: input.equipment ?? []
       },
@@ -141,6 +151,10 @@ export class AuthService {
         experience_level: true,
         days_per_week: true,
         session_minutes: true,
+        weight_kg: true,
+        height_cm: true,
+        body_fat_pct: true,
+        age: true,
         injuries: true,
         equipment: true,
         active_routine_id: true,
@@ -179,6 +193,10 @@ export class AuthService {
         experience_level: true,
         days_per_week: true,
         session_minutes: true,
+        weight_kg: true,
+        height_cm: true,
+        body_fat_pct: true,
+        age: true,
         injuries: true,
         equipment: true,
         active_routine_id: true,

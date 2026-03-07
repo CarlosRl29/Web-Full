@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiRequest } from "../../../lib/api";
 import { useAppAuth } from "../../../lib/useAppAuth";
+import { useLanguage } from "../../../components/LanguageProvider";
 import { useToast } from "../../../components/ToastProvider";
 import { MobileTrainInfoModal } from "../../../components/MobileTrainInfoModal";
 
@@ -18,6 +19,7 @@ type Routine = {
 export default function UserRoutinesPage() {
   const { token, me, loading } = useAppAuth();
   const { showToast } = useToast();
+  const { t } = useLanguage();
   const [ownRoutines, setOwnRoutines] = useState<Routine[]>([]);
   const [assignedRoutines, setAssignedRoutines] = useState<Routine[]>([]);
   const [activeRoutineId, setActiveRoutineId] = useState<string | null>(null);
@@ -73,25 +75,29 @@ export default function UserRoutinesPage() {
           entrenar.
         </p>
         <div className="axion-actions" style={{ marginTop: 14 }}>
-          <Link className="axion-button axion-button-primary" href="/app/routines/builder">
-            Crear rutina
+          <Link className="axion-button axion-button-primary" href="/app/routines/new">
+            {t("btn.crear_rutina")}
           </Link>
           <Link className="axion-button axion-button-secondary" href="/marketplace">
-            Explorar marketplace
+            {t("nav.explorar_marketplace")}
           </Link>
         </div>
       </section>
 
       <section className="axion-card">
         <h2>Mis rutinas</h2>
+        <p className="axion-muted" style={{ fontSize: "0.9rem", marginBottom: 12 }}>
+          Solo puedes tener 1 rutina activa. La rutina activa es la que verás en el celular para
+          comenzar entrenamiento.
+        </p>
         {message ? <p className="axion-muted">{message}</p> : null}
         {ownRoutines.length === 0 ? (
           <div className="axion-empty">
-            <strong>Aún no tienes rutinas propias</strong>
-            <p>Crea una rutina o guarda una desde marketplace para comenzar.</p>
+            <strong>{t("empty.sin_rutinas")}</strong>
+            <p>{t("empty.crear_o_guardar")}</p>
             <div style={{ marginTop: 12 }}>
-              <Link className="axion-button axion-button-primary" href="/app/routines/builder">
-                Crear rutina
+              <Link className="axion-button axion-button-primary" href="/app/routines/new">
+                {t("btn.crear_rutina")}
               </Link>
             </div>
           </div>
@@ -108,16 +114,17 @@ export default function UserRoutinesPage() {
                     className={`axion-button ${activeRoutineId === routine.id ? "axion-button-primary" : "axion-button-secondary"}`}
                     onClick={() => void setActive(routine.id)}
                   >
-                    {activeRoutineId === routine.id ? "Activa" : "Activar"}
+                    {activeRoutineId === routine.id ? t("btn.activa") : t("btn.activar")}
                   </button>
                   <Link className="axion-button axion-button-secondary" href={`/app/routines/${routine.id}`}>
-                    Editar
+                    {t("btn.editar")}
                   </Link>
                   <button
                     className="axion-button axion-button-secondary"
                     onClick={() => setShowTrainInfo(true)}
+                    title="Instrucciones para entrenar en la app AXION del celular"
                   >
-                    Entrenar
+                    {t("btn.entrenar")}
                   </button>
                 </div>
               </li>
@@ -130,8 +137,8 @@ export default function UserRoutinesPage() {
         <h2>Asignadas por coach</h2>
         {assignedRoutines.length === 0 ? (
           <div className="axion-empty">
-            <strong>No tienes rutinas asignadas</strong>
-            <p>Cuando un coach te asigne una rutina aparecerá aquí en modo solo lectura.</p>
+            <strong>{t("empty.sin_asignadas")}</strong>
+            <p>{t("empty.guia_asignadas")}</p>
           </div>
         ) : (
           <ul className="axion-list">
@@ -143,13 +150,14 @@ export default function UserRoutinesPage() {
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button className="axion-button axion-button-secondary" onClick={() => void setActive(routine.id)}>
-                    Activar
+                    {t("btn.activar")}
                   </button>
                   <button
                     className="axion-button axion-button-secondary"
                     onClick={() => setShowTrainInfo(true)}
+                    title="Instrucciones para entrenar en la app AXION del celular"
                   >
-                    Entrenar
+                    {t("btn.entrenar")}
                   </button>
                 </div>
               </li>

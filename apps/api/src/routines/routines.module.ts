@@ -4,6 +4,7 @@ import { RoutinesService } from "./routines.service";
 
 @Module({
   controllers: [RoutinesController],
-  providers: [RoutinesService]
+  providers: [RoutinesService],
+  exports: [RoutinesService]
 })
 export class RoutinesModule {}

@@ -3,18 +3,24 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { clearTokens } from "../lib/api";
-import { useUnsavedChanges } from "./UnsavedChangesProvider";
 import { useAppAuth } from "../lib/useAppAuth";
+import { useLanguage } from "./LanguageProvider";
+import { useUnsavedChanges } from "./UnsavedChangesProvider";
 
 export function UserNav() {
   const pathname = usePathname();
+  const safePathname = pathname ?? "";
   const { confirmNavigation } = useUnsavedChanges();
   const { me } = useAppAuth();
+  const { t, locale, setLocale } = useLanguage();
   const items = [
-    { href: "/app", label: "Inicio" },
-    { href: "/app/routines", label: "Mis rutinas" },
-    { href: "/marketplace", label: "Marketplace" },
-    { href: "/app/profile", label: "Perfil" }
+    { href: "/app", label: t("nav.inicio") },
+    { href: "/app/routines", label: t("nav.mis_rutinas") },
+    { href: "/app/exercises", label: t("nav.ejercicios") },
+    // AXION v2 minimal: progress, marketplace disabled
+    // { href: "/app/progress", label: t("nav.progreso") },
+    // { href: "/marketplace", label: t("nav.marketplace") },
+    { href: "/app/profile", label: t("nav.perfil") }
   ];
 
   return (
@@ -23,7 +29,8 @@ export function UserNav() {
         <div className="axion-logo">AXION</div>
         <nav className="axion-nav">
           {items.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const isActive =
+              safePathname === item.href || safePathname.startsWith(`${item.href}/`);
             return (
               <Link
                 key={item.href}
@@ -42,9 +49,18 @@ export function UserNav() {
           })}
         </nav>
         <div className="axion-nav-right">
+          <select
+            className="axion-select"
+            value={locale}
+            onChange={(e) => setLocale(e.target.value as "es" | "en")}
+            aria-label="Idioma"
+          >
+            <option value="es">ES</option>
+            <option value="en">EN</option>
+          </select>
           {me?.role && (me.role === "COACH" || me.role === "ADMIN") ? (
             <Link className="axion-button axion-button-secondary" href="/coach/routines">
-              Modo coach
+              {t("nav.modo_coach")}
             </Link>
           ) : null}
           <button
@@ -57,7 +73,7 @@ export function UserNav() {
               window.location.href = "/login";
             }}
           >
-            Logout
+            {t("nav.logout")}
           </button>
         </div>
       </div>

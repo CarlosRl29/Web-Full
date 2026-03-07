@@ -14,6 +14,14 @@ export type BuilderExercise = {
   video_url?: string | null;
   submuscle?: string | null;
   type?: string | null;
+  /** Canonical taxonomy - use for display instead of muscle_group/submuscle */
+  primary_muscle?: string | null;
+  primary_submuscle?: string | null;
+  secondary_muscles?: string[];
+  /** Localized labels from API (prefer over raw enums) */
+  primary_muscle_label?: string | null;
+  primary_submuscle_label?: string | null;
+  secondary_muscles_labels?: string[];
 };
 
 export type RoutineBuilderItem = {

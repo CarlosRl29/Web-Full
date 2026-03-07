@@ -36,8 +36,8 @@ export function MobileTrainInfoModal({ open, onClose }: Props) {
       <section className="axion-card axion-modal-card">
         <h2>Entrena desde la app AXION</h2>
         <p className="axion-muted" style={{ marginTop: 8 }}>
-          La web es para organizar tus rutinas. En el gym usa la app para registrar sets,
-          descansos y modo guiado.
+          La web planea, el celular entrena. En el gym usa la app para registrar sets, descansos y
+          modo guiado.
         </p>
         <ol className="axion-modal-steps">
           <li>Abre AXION en tu celular.</li>

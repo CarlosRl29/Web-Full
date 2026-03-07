@@ -14,6 +14,10 @@ export default function ProfilePage() {
     experience_level: "INTERMEDIATE",
     days_per_week: 4,
     session_minutes: 60,
+    weight_kg: "",
+    height_cm: "",
+    body_fat_pct: "",
+    age: "",
     injuries: "",
     equipment: "",
     active_mode: "USER"
@@ -30,6 +34,10 @@ export default function ProfilePage() {
       experience_level: (me.experience_level ?? "INTERMEDIATE") as "BEGINNER" | "INTERMEDIATE" | "ADVANCED",
       days_per_week: me.days_per_week ?? 4,
       session_minutes: me.session_minutes ?? 60,
+      weight_kg: me.weight_kg != null ? String(me.weight_kg) : "",
+      height_cm: me.height_cm != null ? String(me.height_cm) : "",
+      body_fat_pct: me.body_fat_pct != null ? String(me.body_fat_pct) : "",
+      age: me.age != null ? String(me.age) : "",
       injuries: me.injuries ?? "",
       equipment: (me.equipment ?? []).join(", "),
       active_mode: me.active_mode
@@ -51,6 +59,10 @@ export default function ProfilePage() {
             experience_level: form.experience_level,
             days_per_week: Number(form.days_per_week),
             session_minutes: Number(form.session_minutes),
+            weight_kg: form.weight_kg ? Number(form.weight_kg) : undefined,
+            height_cm: form.height_cm ? Number(form.height_cm) : undefined,
+            body_fat_pct: form.body_fat_pct ? Number(form.body_fat_pct) : undefined,
+            age: form.age ? Number(form.age) : undefined,
             injuries: form.injuries || undefined,
             equipment: form.equipment
               .split(",")
@@ -139,6 +151,16 @@ export default function ProfilePage() {
                   <input className="axion-input" type="number" min={15} max={240} value={form.session_minutes} onChange={(e) => setForm((prev) => ({ ...prev, session_minutes: Number(e.target.value) }))} />
                 </label>
               </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <label className="axion-muted">
+                  Peso (kg)
+                  <input className="axion-input" type="number" min={30} max={400} value={form.weight_kg} onChange={(e) => setForm((prev) => ({ ...prev, weight_kg: e.target.value }))} />
+                </label>
+                <label className="axion-muted">
+                  Altura (cm)
+                  <input className="axion-input" type="number" min={120} max={250} value={form.height_cm} onChange={(e) => setForm((prev) => ({ ...prev, height_cm: e.target.value }))} />
+                </label>
+              </div>
             </div>
           </section>
 
@@ -148,6 +170,16 @@ export default function ProfilePage() {
               Puedes completarlos después; ayudan a personalizar mejor IA y seguimiento de coach.
             </p>
             <div style={{ display: "grid", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <label className="axion-muted">
+                  % de grasa corporal (opcional)
+                  <input className="axion-input" type="number" min={3} max={70} value={form.body_fat_pct} onChange={(e) => setForm((prev) => ({ ...prev, body_fat_pct: e.target.value }))} />
+                </label>
+                <label className="axion-muted">
+                  Edad (opcional)
+                  <input className="axion-input" type="number" min={13} max={100} value={form.age} onChange={(e) => setForm((prev) => ({ ...prev, age: e.target.value }))} />
+                </label>
+              </div>
               <label className="axion-muted">
                 Lesiones o dolor (opcional)
                 <input className="axion-input" value={form.injuries} onChange={(e) => setForm((prev) => ({ ...prev, injuries: e.target.value }))} />

@@ -160,6 +160,14 @@ export async function getRoutines(): Promise<Routine[]> {
   return request<Routine[]>("/routines");
 }
 
+export async function getActiveRoutine(): Promise<Routine | null> {
+  return request<Routine | null>("/routines/active");
+}
+
+export async function getRoutineDetail(id: string): Promise<Routine> {
+  return request<Routine>(`/routines/${id}`);
+}
+
 export async function getActiveWorkoutSession(): Promise<ActiveSession | null> {
   return request<ActiveSession | null>("/workout-sessions/active");
 }
@@ -183,4 +191,172 @@ export async function finishWorkoutSession(sessionId: string): Promise<ActiveSes
     method: "POST",
     body: JSON.stringify({ session_id: sessionId })
   });
+}
+
+export type SwapReason =
+  | "EQUIPMENT_BUSY"
+  | "NOT_AVAILABLE"
+  | "PAIN"
+  | "PREFERENCE"
+  | "TOO_HARD";
+
+export type ReplacementOption = {
+  id: string;
+  display_name: string;
+  equipment: string | null;
+  explanation: string;
+  score: number;
+};
+
+export async function getReplacements(
+  workoutId: string,
+  workoutExerciseId: string,
+  query: {
+    reason?: SwapReason;
+    locale?: "es" | "en";
+    available_equipment?: string;
+    blocked_equipment?: string;
+  } = {}
+): Promise<ReplacementOption[]> {
+  const params = new URLSearchParams();
+  if (query.reason) params.set("reason", query.reason);
+  if (query.locale) params.set("locale", query.locale);
+  if (query.available_equipment) params.set("available_equipment", query.available_equipment);
+  if (query.blocked_equipment) params.set("blocked_equipment", query.blocked_equipment);
+  const qs = params.toString();
+  return request<ReplacementOption[]>(
+    `/workout-sessions/${workoutId}/exercises/${workoutExerciseId}/replacements${qs ? `?${qs}` : ""}`
+  );
+}
+
+export type ProgressOverview = {
+  sessionsCount: number;
+  volumeTotal: number;
+  adherence: number;
+  windowDays: number;
+};
+
+export type MusclesResponse = {
+  effective: Record<string, number>;
+  targets: Record<string, { min: number; max: number }>;
+};
+
+export type ExerciseTrend = {
+  exerciseId: string;
+  exerciseName: string;
+  e1rmBest: number | null;
+  e1rmTrend: number[];
+  volumeTrend: number[];
+  lastSessions: Array<{ weight: number; reps: number }>;
+  lastPerformedAt: string | null;
+  nextSuggestion?: { type: string; value?: number };
+};
+
+export type TrainingPlan = {
+  id: string;
+  goal: string;
+  priority_area: string;
+  weeks_total: number;
+  start_date: string;
+  milestones?: unknown;
+} | null;
+
+export type ExerciseListItem = {
+  id: string;
+  name: string;
+  display_name?: string;
+  canonical_slug?: string | null;
+  primary_muscle_label?: string | null;
+  primary_submuscle_label?: string | null;
+  instructions?: string | null;
+  image_url?: string | null;
+};
+
+export type FilterOptions = {
+  muscles: Array<{ value: string; label: string }>;
+  submuscles: Array<{ value: string; label: string }>;
+  types: Array<{ value: string; label: string }>;
+};
+
+export async function getFilterOptions(): Promise<FilterOptions> {
+  return request<FilterOptions>("/exercises/filter-options");
+}
+
+export async function getProgressOverview(days?: number): Promise<ProgressOverview> {
+  const qs = days != null ? `?days=${days}` : "";
+  return request<ProgressOverview>(`/progress/overview${qs}`);
+}
+
+export async function getProgressMuscles(days?: number): Promise<MusclesResponse> {
+  const params = new URLSearchParams();
+  params.set("includeTargets", "true");
+  if (days != null) params.set("days", String(days));
+  return request<MusclesResponse>(`/progress/muscles?${params.toString()}`);
+}
+
+export async function getProgressExercise(exerciseId: string, limit?: number): Promise<ExerciseTrend | null> {
+  const qs = limit != null ? `?limit=${limit}` : "";
+  return request<ExerciseTrend | null>(`/progress/exercise/${exerciseId}${qs}`);
+}
+
+export async function getCurrentPlan(): Promise<TrainingPlan> {
+  return request<TrainingPlan>("/plans/current");
+}
+
+export type CheckInStatus = { created_at: string } | null;
+
+export type CheckInResult = {
+  id: string;
+  readinessModifier: number;
+  blockVolumeIncreases: boolean;
+  adjustments: string[];
+};
+
+export async function getCheckInStatus(): Promise<CheckInStatus> {
+  return request<CheckInStatus>("/progress/checkin/status");
+}
+
+export async function submitCheckIn(body: {
+  fatigue: number;
+  pain_location: string;
+  sleep_quality: string;
+  difficulty: string;
+}): Promise<CheckInResult> {
+  return request<CheckInResult>("/progress/checkin", {
+    method: "POST",
+    body: JSON.stringify(body)
+  });
+}
+
+export async function getExercises(params: {
+  search?: string;
+  limit?: number;
+  muscle?: string;
+  locale?: "es" | "en";
+} = {}): Promise<ExerciseListItem[]> {
+  const p = new URLSearchParams();
+  if (params.search) p.set("search", params.search);
+  if (params.limit != null) p.set("limit", String(params.limit));
+  if (params.muscle) p.set("muscle", params.muscle);
+  if (params.locale) p.set("locale", params.locale);
+  const qs = p.toString();
+  return request<ExerciseListItem[]>(`/exercises${qs ? `?${qs}` : ""}`);
+}
+
+export async function swapExercise(
+  workoutId: string,
+  workoutExerciseId: string,
+  body: {
+    replacement_exercise_id: string;
+    reason: SwapReason;
+    save_preference: boolean;
+  }
+): Promise<{ success: boolean; message: string }> {
+  return request<{ success: boolean; message: string }>(
+    `/workout-sessions/${workoutId}/exercises/${workoutExerciseId}/swap`,
+    {
+      method: "POST",
+      body: JSON.stringify(body)
+    }
+  );
 }

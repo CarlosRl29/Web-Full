@@ -7,7 +7,11 @@ import { RoutinesModule } from "./routines/routines.module";
 import { WorkoutSessionsModule } from "./workout-sessions/workout-sessions.module";
 import { CoachModule } from "./coach/coach.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
-import { AiModule } from "./ai/ai.module";
+// AXION v2 minimal core: disabled (do not delete)
+// import { AiModule } from "./ai/ai.module";
+// import { AdminModule } from "./admin/admin.module";
+// import { ProgressModule } from "./progress/progress.module";
+// import { PlansModule } from "./plans/plans.module";
 import { JwtAuthGuard } from "./auth/jwt-auth.guard";
 import { RolesGuard } from "./common/roles.guard";
 import { ResponseInterceptor } from "./common/response.interceptor";
@@ -21,8 +25,8 @@ import { AllExceptionsFilter } from "./common/all-exceptions.filter";
     RoutinesModule,
     WorkoutSessionsModule,
     CoachModule,
-    AnalyticsModule,
-    AiModule
+    AnalyticsModule
+    // AiModule, AdminModule, ProgressModule, PlansModule - disabled for v2 minimal core
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

@@ -13,10 +13,10 @@ import {
   View
 } from "react-native";
 import { StartSessionInput } from "@gym/shared";
-import { Routine, RoutineDay } from "../types";
+import { ActiveSession, Routine, RoutineDay } from "../types";
 
 type Props = {
-  hasActiveSession: boolean;
+  activeSession?: ActiveSession | null;
   onResume: () => void;
   routine: Routine;
   day: RoutineDay;
@@ -40,13 +40,18 @@ function parseOrUndefined(value: string) {
 }
 
 export function PreStartScreen({
-  hasActiveSession,
+  activeSession,
   onResume,
   routine,
   day,
   onBack,
   onStart
 }: Props) {
+  const hasActiveSession = Boolean(activeSession);
+  const isSameDaySession =
+    hasActiveSession &&
+    activeSession!.routine_day_id === day.id &&
+    activeSession!.routine_id === routine.id;
   const [restBetween, setRestBetween] = useState("");
   const [restAfterRound, setRestAfterRound] = useState("");
   const [restAfterSet, setRestAfterSet] = useState("");
@@ -136,7 +141,9 @@ export function PreStartScreen({
         }
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo iniciar la sesion");
+      const msg =
+        err instanceof Error ? err.message : "No se pudo iniciar la sesión. Revisa tu conexión.";
+      setError(msg);
     } finally {
       setIsStarting(false);
     }
@@ -233,25 +240,41 @@ export function PreStartScreen({
           </ScrollView>
 
           <View style={styles.footer}>
-            <Pressable
-              onPress={() => void handleStart()}
-              style={[styles.cta, isStarting && styles.disabled]}
-              disabled={isStarting}
-            >
-              {isStarting ? (
-                <ActivityIndicator color="#052e16" />
-              ) : (
-                <Text style={styles.ctaText}>Iniciar sesion</Text>
-              )}
-            </Pressable>
+            {isSameDaySession ? (
+              <>
+                <View style={styles.sameDayBanner}>
+                  <Text style={styles.sameDayText}>
+                    Ya tienes una sesión activa para este día. Reanuda en lugar de iniciar otra.
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={onResume}
+                  style={[styles.cta, styles.ctaResume]}
+                >
+                  <Text style={styles.ctaText}>Reanudar sesión activa</Text>
+                </Pressable>
+              </>
+            ) : (
+              <Pressable
+                onPress={() => void handleStart()}
+                style={[styles.cta, isStarting && styles.disabled]}
+                disabled={isStarting}
+              >
+                {isStarting ? (
+                  <ActivityIndicator color="#052e16" />
+                ) : (
+                  <Text style={styles.ctaText}>Iniciar sesión</Text>
+                )}
+              </Pressable>
+            )}
 
             <Pressable onPress={onBack} style={styles.ghost}>
               <Text style={styles.ghostText}>Volver a rutinas</Text>
             </Pressable>
 
-            {hasActiveSession && (
+            {hasActiveSession && !isSameDaySession && (
               <Pressable onPress={onResume} style={styles.resume}>
-                <Text style={styles.ghostText}>Reanudar sesion activa</Text>
+                <Text style={styles.ghostText}>Reanudar sesión activa (otro día)</Text>
               </Pressable>
             )}
           </View>
@@ -317,6 +340,19 @@ const styles = StyleSheet.create({
     backgroundColor: "#22c55e",
     paddingVertical: 14,
     borderRadius: 10
+  },
+  ctaResume: { backgroundColor: "#22d3ee" },
+  sameDayBanner: {
+    backgroundColor: "#164e63",
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 12
+  },
+  sameDayText: {
+    color: "#cffafe",
+    fontSize: 14,
+    textAlign: "center",
+    fontWeight: "600"
   },
   disabled: { opacity: 0.7 },
   warning: { marginTop: 10, color: "#facc15", fontWeight: "600" },

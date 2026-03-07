@@ -8,6 +8,10 @@ import {
 } from "@nestjs/common";
 import {
   AiAppliedSuggestionInput,
+  AiGenerateRoutineAxionRequest,
+  AiGenerateRoutineRequest,
+  AiGenerateRoutineSuccess,
+  AiGenerateWorkoutDayRequest,
   AiPlanSuggestion,
   AiRecommendationRequest,
   AiRecommendationResponse
@@ -17,6 +21,10 @@ import { createHash } from "crypto";
 import { AuthUser } from "../auth/auth.types";
 import { AnalyticsService } from "../analytics/analytics.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { ProgressService } from "../progress/progress.service";
+import { RoutineGeneratorService } from "../modules/ai/routine-generator.service";
+import { AxionRoutineGeneratorService } from "../modules/ai/axion/axion-routine-generator.service";
+import { AxionSingleDayGeneratorService } from "../modules/ai/axion/axion-single-day-generator.service";
 
 const MODEL_VERSION = "sprint3.1-mvp";
 const STRATEGY_VERSION = "3.3.0";
@@ -54,7 +62,11 @@ type ExportLogsParams = {
 export class AiService {
   constructor(
     private readonly analyticsService: AnalyticsService,
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
+    private readonly progressService: ProgressService,
+    private readonly routineGenerator: RoutineGeneratorService,
+    private readonly axionGenerator: AxionRoutineGeneratorService,
+    private readonly axionSingleDayGenerator: AxionSingleDayGeneratorService
   ) {}
 
   private sanitizeMedicalLanguage(text: string, safetyFlags: string[]): string {
@@ -587,6 +599,69 @@ export class AiService {
       ...response,
       ai_log_id: createdLog.id
     };
+  }
+
+  async generateRoutine(
+    input: AiGenerateRoutineRequest,
+    actor: AuthUser
+  ): Promise<AiGenerateRoutineSuccess> {
+    try {
+      return await this.routineGenerator.generateAndSave(actor.sub, input);
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      const msg = err instanceof Error ? err.message : "Error al generar rutina";
+      throw new HttpException({ message: msg }, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  async generateWorkoutDay(
+    input: AiGenerateWorkoutDayRequest,
+    actor: AuthUser
+  ) {
+    try {
+      const checkInContext = await this.progressService.getCheckInContext(actor.sub);
+      return await this.axionSingleDayGenerator.generate({
+        goal: input.goal,
+        level: input.level,
+        sex: input.sex,
+        dayFocus: input.dayFocus,
+        durationMinutes: input.durationMinutes,
+        equipment_available: input.equipment_available ?? [],
+        userId: actor.sub,
+        locale: input.locale ?? "es",
+        history: input.history,
+        checkInContext: checkInContext ?? undefined
+      });
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      const msg = err instanceof Error ? err.message : "Error al generar entrenamiento";
+      throw new HttpException({ message: msg }, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  async generateRoutineAxion(
+    input: AiGenerateRoutineAxionRequest,
+    actor: AuthUser
+  ): Promise<AiGenerateRoutineSuccess> {
+    try {
+      const axionInput = {
+        goal: input.goal,
+        level: input.level,
+        sex: input.sex,
+        priority_area: input.priority_area,
+        days_per_week: input.days_per_week,
+        session_duration_mode: input.session_duration_mode,
+        session_minutes: input.session_minutes ?? 60,
+        equipment_available: input.equipment_available ?? [],
+        userId: actor.sub,
+        history: input.history
+      };
+      return await this.axionGenerator.generateAndSave(actor.sub, axionInput);
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      const msg = err instanceof Error ? err.message : "Error al generar rutina AXION";
+      throw new HttpException({ message: msg }, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
   }
 
   async getLogs(actor: AuthUser, params: ListLogsParams) {

@@ -1,6 +1,16 @@
 "use client";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
+function getApiBaseUrl(): string {
+  if (typeof process.env.NEXT_PUBLIC_API_URL === "string" && process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  if (typeof window !== "undefined") {
+    return `${window.location.protocol}//${window.location.hostname}:3001/api`;
+  }
+  return "http://localhost:3001/api";
+}
+
+const API_BASE_URL = getApiBaseUrl();
 const TOKENS_KEY = "coach_tokens";
 
 export type AuthTokens = {
@@ -22,11 +32,27 @@ export async function apiRequest<T>(
     }
   });
 
-  const payload = await response.json();
-  if (!response.ok || !payload?.success) {
-    throw new Error(payload?.error?.message ?? payload?.message ?? "API request failed");
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = {};
   }
-  return payload.data as T;
+  if (!response.ok || !(payload && typeof payload === "object" && "success" in payload && (payload as { success?: boolean }).success)) {
+    const p = payload as { error?: { message?: string | string[] } };
+    const msg =
+      p?.error && typeof p.error === "object" && "message" in p.error
+        ? Array.isArray(p.error.message)
+          ? p.error.message[0]
+          : p.error.message
+        : "API request failed";
+    const err = new Error(typeof msg === "string" ? msg : "API request failed") as Error & {
+      response?: { data: unknown; status: number };
+    };
+    err.response = { data: payload, status: response.status };
+    throw err;
+  }
+  return (payload as unknown as { data: T }).data as T;
 }
 
 export function loadTokens(): AuthTokens | null {

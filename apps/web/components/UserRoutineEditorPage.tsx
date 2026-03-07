@@ -10,6 +10,7 @@ import {
 import { apiRequest } from "../lib/api";
 import { useAppAuth } from "../lib/useAppAuth";
 import { useToast } from "./ToastProvider";
+import { useLanguage } from "./LanguageProvider";
 import { useUnsavedChanges } from "./UnsavedChangesProvider";
 
 type Props = {
@@ -19,6 +20,7 @@ type Props = {
 export function UserRoutineEditorPage({ routineId }: Props) {
   const { token, loading } = useAppAuth();
   const { showToast } = useToast();
+  const { locale } = useLanguage();
   const { hasUnsavedChanges, setHasUnsavedChanges } = useUnsavedChanges();
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [draft, setDraft] = useState<RoutineDraft>(createEmptyRoutine());
@@ -41,7 +43,7 @@ export function UserRoutineEditorPage({ routineId }: Props) {
     }
     (async () => {
       const [exerciseData, existingRoutine] = await Promise.all([
-        apiRequest<Exercise[]>("/exercises?limit=200", {}, token),
+        apiRequest<Exercise[]>(`/exercises?limit=500&locale=${locale}`, {}, token),
         routineId ? apiRequest<any>(`/routines/${routineId}`, {}, token) : Promise.resolve(null)
       ]);
       setExercises(exerciseData);
@@ -78,7 +80,7 @@ export function UserRoutineEditorPage({ routineId }: Props) {
     })().catch((error) => {
       setMessage(error instanceof Error ? error.message : "No se pudieron cargar datos");
     });
-  }, [token, routineId]);
+  }, [token, routineId, locale]);
 
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => {

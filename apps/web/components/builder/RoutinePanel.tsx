@@ -24,8 +24,10 @@ type Props = {
   onEditItem: (item: RoutineBuilderItem) => void;
   onRemoveItem: (item: RoutineBuilderItem) => void;
   onSave: () => void;
+  onGenerateSuggestions: () => void;
   onClear: () => void;
   saving: boolean;
+  aiLoading: boolean;
 };
 
 function SortableRoutineItem({
@@ -81,8 +83,10 @@ export function RoutinePanel({
   onEditItem,
   onRemoveItem,
   onSave,
+  onGenerateSuggestions,
   onClear,
-  saving
+  saving,
+  aiLoading
 }: Props) {
   const { setNodeRef, isOver } = useDroppable({ id: "routine-dropzone" });
 
@@ -166,8 +170,8 @@ export function RoutinePanel({
         <button className="axion-button axion-button-secondary" onClick={onClear}>
           Limpiar
         </button>
-        <button className="axion-button axion-button-secondary" disabled>
-          Generar rutina (próximamente)
+        <button className="axion-button axion-button-secondary" onClick={onGenerateSuggestions} disabled={aiLoading}>
+          {aiLoading ? "Generando..." : "Generar sugerencias IA"}
         </button>
       </div>
     </section>

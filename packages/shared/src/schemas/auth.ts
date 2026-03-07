@@ -23,6 +23,10 @@ export const updateProfileSchema = z.object({
   experience_level: z.nativeEnum(ExperienceLevel),
   days_per_week: z.number().int().min(1).max(7),
   session_minutes: z.number().int().min(15).max(240),
+  weight_kg: z.number().min(30).max(400).optional(),
+  height_cm: z.number().int().min(120).max(250).optional(),
+  body_fat_pct: z.number().min(3).max(70).optional(),
+  age: z.number().int().min(13).max(100).optional(),
   injuries: z.string().max(1000).optional(),
   equipment: z.array(z.string().min(1)).optional()
 });

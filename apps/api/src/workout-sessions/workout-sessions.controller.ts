@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, Post, UsePipes } from "@nestjs/common";
+import { Body, Controller, Get, Patch, Post } from "@nestjs/common";
 import {
   finishSessionSchema,
   startSessionSchema,
@@ -14,8 +14,10 @@ export class WorkoutSessionsController {
   constructor(private readonly workoutSessionsService: WorkoutSessionsService) {}
 
   @Post("start")
-  @UsePipes(new ZodValidationPipe(startSessionSchema))
-  start(@Body() body: unknown, @CurrentUser() user: AuthUser) {
+  start(
+    @Body(new ZodValidationPipe(startSessionSchema)) body: unknown,
+    @CurrentUser() user: AuthUser
+  ) {
     return this.workoutSessionsService.start(body as never, user.sub);
   }
 
@@ -25,14 +27,18 @@ export class WorkoutSessionsController {
   }
 
   @Patch("progress")
-  @UsePipes(new ZodValidationPipe(updateProgressSchema))
-  patchProgress(@Body() body: unknown, @CurrentUser() user: AuthUser) {
+  patchProgress(
+    @Body(new ZodValidationPipe(updateProgressSchema)) body: unknown,
+    @CurrentUser() user: AuthUser
+  ) {
     return this.workoutSessionsService.patchProgress(body as never, user.sub);
   }
 
   @Post("finish")
-  @UsePipes(new ZodValidationPipe(finishSessionSchema))
-  finish(@Body() body: unknown, @CurrentUser() user: AuthUser) {
+  finish(
+    @Body(new ZodValidationPipe(finishSessionSchema)) body: unknown,
+    @CurrentUser() user: AuthUser
+  ) {
     const { session_id } = body as { session_id: string };
     return this.workoutSessionsService.finish(user.sub, session_id);
   }
