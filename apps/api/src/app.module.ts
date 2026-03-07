@@ -7,6 +7,7 @@ import { RoutinesModule } from "./routines/routines.module";
 import { WorkoutSessionsModule } from "./workout-sessions/workout-sessions.module";
 import { CoachModule } from "./coach/coach.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
+import { HealthModule } from "./health/health.module";
 // AXION v2 minimal core: disabled (do not delete)
 // import { AiModule } from "./ai/ai.module";
 // import { AdminModule } from "./admin/admin.module";
@@ -25,7 +26,8 @@ import { AllExceptionsFilter } from "./common/all-exceptions.filter";
     RoutinesModule,
     WorkoutSessionsModule,
     CoachModule,
-    AnalyticsModule
+    AnalyticsModule,
+    HealthModule
     // AiModule, AdminModule, ProgressModule, PlansModule - disabled for v2 minimal core
   ],
   providers: [

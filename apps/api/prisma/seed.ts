@@ -511,8 +511,19 @@ const GOLDEN_EXERCISES: GoldenExercise[] = [
 ];
 
 async function main() {
-  const adminEmail = "admin@gym.local";
-  const adminPassword = await bcrypt.hash("Admin1234", 10);
+  const adminEmail =
+    process.env.SEED_ADMIN_EMAIL ?? "admin@gym.local";
+  const adminPasswordPlain =
+    process.env.SEED_ADMIN_PASSWORD ?? "Admin1234";
+  if (
+    process.env.NODE_ENV === "production" &&
+    (adminPasswordPlain === "Admin1234" || adminEmail === "admin@gym.local")
+  ) {
+    throw new Error(
+      "Production seed requires SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD env vars. Do not use default credentials."
+    );
+  }
+  const adminPassword = await bcrypt.hash(adminPasswordPlain, 10);
 
   await prisma.user.upsert({
     where: { email: adminEmail },

@@ -1,0 +1,16 @@
+# Railway / Nixpacks config for apps/api monorepo deployment
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+cmds = [
+  "npm run build:shared",
+  "npm run db:generate -w @gym/api",
+  "npm run build:api"
+]
+
+[start]
+cmd = "npm run deploy:api"
