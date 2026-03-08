@@ -16,7 +16,6 @@
     "remove-old-exercises": "ts-node scripts/remove-old-seed-exercises.ts",
     "remove-all-exercises": "ts-node scripts/remove-all-exercises.ts",
     "seed-exercises-spanish": "ts-node scripts/seed-exercises-spanish.ts",
-    "ai:ingest-knowledge": "ts-node src/modules/ai/knowledge/ingest-knowledge.ts",
     "backfill-exercise-taxonomy": "ts-node scripts/backfill-exercise-taxonomy.ts",
     "migrate-exercise-translations": "ts-node scripts/migrate-exercise-translations.ts",
     "kill-port": "node scripts/kill-port-3001.js"

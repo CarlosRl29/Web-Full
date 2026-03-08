@@ -30,15 +30,9 @@ import {
 } from "./routine-validation.service";
 import { RoutinesService } from "../../routines/routines.service";
 import { PrismaService } from "../../prisma/prisma.service";
-import { KnowledgeRetrieverService } from "./knowledge/knowledge-retriever.service";
 
 const MAX_REPAIR_ATTEMPTS = 2;
-const MAX_KNOWLEDGE_CHARS = 2500;
 const MODEL_NAME = "deterministic-v1";
-
-function getKnowledgePackVersion(): string {
-  return process.env.KNOWLEDGE_PACK_VERSION ?? "unknown";
-}
 
 function computeExerciseLibraryHash(
   library: Array<{ id: string }>
@@ -74,23 +68,6 @@ function buildMinimalLogContext(
   };
 }
 
-function buildKnowledgeQuery(params: {
-  goal: string;
-  level: string;
-  daysPerWeek: number;
-  equipment: string[];
-  injuries?: string;
-}): string {
-  const parts = [
-    `training routine ${params.goal} goal`,
-    `${params.level} experience level`,
-    `${params.daysPerWeek} days per week`,
-    params.equipment.length > 0 ? `equipment: ${params.equipment.join(", ")}` : "",
-    params.injuries?.trim() ? `injuries considerations: ${params.injuries}` : ""
-  ].filter(Boolean);
-  return parts.join(". ");
-}
-
 @Injectable()
 export class RoutineGeneratorService {
   constructor(
@@ -98,8 +75,7 @@ export class RoutineGeneratorService {
     private readonly exerciseLibrary: ExerciseLibraryService,
     private readonly validation: RoutineValidationService,
     private readonly routinesService: RoutinesService,
-    private readonly prisma: PrismaService,
-    private readonly knowledgeRetriever: KnowledgeRetrieverService
+    private readonly prisma: PrismaService
   ) {}
 
   /** Deterministic pick from array (seeded by day index for reproducibility) */
@@ -293,7 +269,6 @@ export class RoutineGeneratorService {
     const requestId = randomUUID();
     const startedAt = Date.now();
     const seedUsed = String(randomInt(0, 0x7fffffff));
-    const knowledgePackVersion = getKnowledgePackVersion();
 
     const logFailure = async (params: {
       failureStage: string;
@@ -304,8 +279,6 @@ export class RoutineGeneratorService {
       exerciseLibraryHash?: string | null;
       qualityScore?: number | null;
       qualityReasons?: string[];
-      retrievedSources?: string[];
-      retrievedTopK?: number;
     }) => {
       const durationMs = Date.now() - startedAt;
       const promptChars = JSON.stringify(params.minimalContext).length;
@@ -325,11 +298,8 @@ export class RoutineGeneratorService {
           repair_attempts: params.repairAttempts ?? 0,
           seed_used: seedUsed,
           exercise_library_hash: params.exerciseLibraryHash ?? null,
-          knowledge_pack_version: knowledgePackVersion,
           quality_score: params.qualityScore ?? null,
           quality_reasons: params.qualityReasons ?? [],
-          retrieved_sources: params.retrievedSources ?? [],
-          retrieved_top_k: params.retrievedTopK ?? null,
           success: false
         }
       });
@@ -339,8 +309,6 @@ export class RoutineGeneratorService {
     let profile: Awaited<ReturnType<AiToolsService["getUserProfile"]>>;
     let context: ReturnType<AiToolsService["buildUserContext"]>;
     let draft: AiRoutineDraft;
-    let retrievedSources: string[] = [];
-    let retrievedTopK = 0;
 
     try {
       library = await this.exerciseLibrary.getExerciseLibrary({
@@ -395,49 +363,15 @@ export class RoutineGeneratorService {
 
     try {
       profile = await this.aiTools.getUserProfile(userId);
-      const goal = (input.profile?.goal ?? profile?.goal ?? "MIXED") as string;
-      const level = (input.profile?.experience_level ?? profile?.experience_level ?? "INTERMEDIATE") as string;
-      const daysPerWeek = Math.min(6, Math.max(2, Number(input.profile?.days_per_week ?? profile?.days_per_week ?? 4)));
-      const equipment = (input.constraints?.equipment ?? profile?.equipment ?? []) as string[];
-      const injuries = input.constraints?.injuries ?? profile?.injuries ?? undefined;
-
-      const query = buildKnowledgeQuery({ goal, level, daysPerWeek, equipment, injuries });
-      const chunks = await this.knowledgeRetriever.retrieveRelevantChunks(
-        query,
-        knowledgePackVersion,
-        8
-      );
-      retrievedSources = [...new Set(chunks.map((c) => c.source))];
-      retrievedTopK = chunks.length;
-
-      let knowledgeSnippets: string[] = [];
-      if (chunks.length > 0) {
-        let total = 0;
-        for (const c of chunks) {
-          const snippet = `[${c.source}] ${c.content}`;
-          if (total + snippet.length + 2 <= MAX_KNOWLEDGE_CHARS) {
-            knowledgeSnippets.push(snippet);
-            total += snippet.length + 2;
-          } else {
-            const remaining = MAX_KNOWLEDGE_CHARS - total - 20;
-            if (remaining > 50) {
-              knowledgeSnippets.push(`[${c.source}] ${c.content.slice(0, remaining)}...`);
-            }
-            break;
-          }
-        }
-      }
-
       context = this.aiTools.buildUserContext(profile, {
         goal: input.profile?.goal as string | undefined,
         experience_level: input.profile?.experience_level as string | undefined,
         days_per_week: input.profile?.days_per_week,
         equipment: (input.constraints?.equipment ?? []) as string[],
         injuries: input.constraints?.injuries,
-        session_minutes: input.constraints?.session_minutes,
-        knowledgeSnippets: knowledgeSnippets.length > 0 ? knowledgeSnippets : undefined
+        session_minutes: input.constraints?.session_minutes
       });
-      draft = await this.generateDraft(userId, input, seedUsed, knowledgeSnippets.length > 0 ? knowledgeSnippets : undefined);
+      draft = await this.generateDraft(userId, input, seedUsed);
     } catch (err) {
       if (err instanceof HttpException && (err.getResponse() as { errorCode?: string })?.errorCode) {
         throw err;
@@ -452,9 +386,7 @@ export class RoutineGeneratorService {
         failureStage: "generate",
         validationErrors: [err instanceof Error ? err.message : "Unknown error"],
         minimalContext,
-        exerciseLibraryHash: computeExerciseLibraryHash(library),
-        retrievedSources,
-        retrievedTopK
+        exerciseLibraryHash: computeExerciseLibraryHash(library)
       });
       throw new HttpException(
         {
@@ -508,9 +440,7 @@ export class RoutineGeneratorService {
         draft,
         minimalContext,
         repairAttempts,
-        exerciseLibraryHash: computeExerciseLibraryHash(library),
-        retrievedSources,
-        retrievedTopK
+        exerciseLibraryHash: computeExerciseLibraryHash(library)
       });
       throw new HttpException(
         {
@@ -554,9 +484,7 @@ export class RoutineGeneratorService {
         draft,
         minimalContext,
         repairAttempts,
-        exerciseLibraryHash: computeExerciseLibraryHash(library),
-        retrievedSources,
-        retrievedTopK
+        exerciseLibraryHash: computeExerciseLibraryHash(library)
       });
       throw new HttpException(
         (miss
@@ -611,9 +539,7 @@ export class RoutineGeneratorService {
         draft,
         minimalContext,
         repairAttempts,
-        exerciseLibraryHash: computeExerciseLibraryHash(library),
-        retrievedSources,
-        retrievedTopK
+        exerciseLibraryHash: computeExerciseLibraryHash(library)
       });
       throw new HttpException(
         {
@@ -648,11 +574,8 @@ export class RoutineGeneratorService {
         response_chars: responseChars,
         seed_used: seedUsed,
         exercise_library_hash: exerciseLibraryHash,
-        knowledge_pack_version: knowledgePackVersion,
         quality_score: qualityResult.score,
-        quality_reasons: qualityResult.reasons,
-        retrieved_sources: retrievedSources,
-        retrieved_top_k: retrievedTopK
+        quality_reasons: qualityResult.reasons
       }
     });
 

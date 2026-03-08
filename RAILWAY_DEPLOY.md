@@ -39,16 +39,14 @@ Deploy the backend API first (mobile testing depends on it), then optionally the
 
 ## 5. Run Migrations & Seed (first deploy)
 
-After the first successful deploy:
-
-1. **Settings** → open a **Shell** or use Railway CLI.
-2. Or run locally with `DATABASE_URL` from Railway:
-   ```bash
-   DATABASE_URL="postgresql://..." npm run db:migrate:deploy -w @gym/api
-   DATABASE_URL="postgresql://..." SEED_ADMIN_EMAIL=admin@yourdomain.com SEED_ADMIN_PASSWORD=YourStrongPassword npm run db:seed -w @gym/api
-   ```
-
 The `deploy:api` script runs `db:migrate:deploy` before `start`, so migrations run on every deploy.
+
+**If you had a previous Postgres with failed RAG migrations (P3009):** Recreate the Postgres service (delete and add a new PostgreSQL), then redeploy. AXION v2 uses a clean baseline with no AI/RAG/vector migrations.
+
+After first successful deploy, run seed manually (Shell or locally with `DATABASE_URL` from Railway):
+```bash
+DATABASE_URL="postgresql://..." SEED_ADMIN_EMAIL=admin@yourdomain.com SEED_ADMIN_PASSWORD=YourStrongPassword npm run db:seed -w @gym/api
+```
 
 ## 6. Verify API
 
@@ -97,5 +95,6 @@ Rebuild/restart the Expo app so it uses the new API URL.
 - **DB connection fails**: Verify `DATABASE_URL` is linked from Postgres. Railway Postgres uses SSL; Prisma handles it.
 - **502 Bad Gateway**: Check logs. Often the app crashes on startup (e.g. missing env vars).
 - **FATAL: In production, set JWT_ACCESS_SECRET...**: Add `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` in Railway Variables. Generate with `openssl rand -base64 32`.
+- **P3009 / migration failed**: AXION v2 uses a clean baseline (no RAG/vector). If you had old migrations, delete the Postgres service and add a new one, then redeploy.
 - **Web build fails / wrong branch**: Ensure branch is `axion-v2-clean`, Root Directory is empty, and `DEPLOY_TARGET=web` is set for the Web service.
 - **Web runs build:api**: Set `DEPLOY_TARGET=web` in the Web service Variables.

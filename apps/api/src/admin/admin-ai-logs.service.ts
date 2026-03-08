@@ -29,7 +29,6 @@ export class AdminAiLogsService {
         generation_input: true,
         seed_used: true,
         exercise_library_hash: true,
-        knowledge_pack_version: true,
         quality_score: true,
         quality_reasons: true,
         created_at: true
@@ -53,7 +52,6 @@ export class AdminAiLogsService {
         generation_input: log.generation_input,
         seed_used: log.seed_used,
         exercise_library_hash: log.exercise_library_hash,
-        knowledge_pack_version: log.knowledge_pack_version,
         quality_score: log.quality_score,
         quality_reasons: log.quality_reasons,
         created_at: log.created_at

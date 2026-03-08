@@ -8,7 +8,6 @@ import { AiToolsService } from "./ai-tools.service";
 import { RoutineValidationService } from "./routine-validation.service";
 import { RoutineQualityService } from "./routine-quality.service";
 import { RoutineGeneratorService } from "./routine-generator.service";
-import { KnowledgeRetrieverService } from "./knowledge/knowledge-retriever.service";
 import { AxionRoutineGeneratorService } from "./axion/axion-routine-generator.service";
 import { AxionSingleDayGeneratorService } from "./axion/axion-single-day-generator.service";
 
@@ -19,7 +18,6 @@ import { AxionSingleDayGeneratorService } from "./axion/axion-single-day-generat
     AiToolsService,
     RoutineValidationService,
     RoutineQualityService,
-    KnowledgeRetrieverService,
     RoutineGeneratorService,
     AxionRoutineGeneratorService,
     AxionSingleDayGeneratorService
