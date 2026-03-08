@@ -11,7 +11,7 @@
     "baseUrl": ".",
     "paths": {
       "@gym/shared": [
-        "packages/shared/src"
+        "packages/shared/dist"
       ]
     }
   }

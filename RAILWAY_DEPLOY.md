@@ -61,12 +61,12 @@ Web depends on `packages/shared`, so it must build from the monorepo root.
 
 1. **+ New** → **GitHub Repo** → same repo, same project.
 2. **Settings** → **Source** → **Branch**: `axion-v2-clean`.
-3. **Settings** → **Service**:
-   - **Root Directory**: leave **empty** (monorepo root). Do **not** use `/apps/web` – web needs `packages/*`.
-   - **Build Command**: `npm ci && npm run build:web`
-   - **Start Command**: `npm run start:web`
+3. **Variables** → add `DEPLOY_TARGET` = `web` (required – tells nixpacks to run build:web/start:web instead of API).
 4. **Variables** → add `NEXT_PUBLIC_API_URL` = `https://YOUR-API-RAILWAY-URL/api` (your API service domain). Required at build time.
-5. **Settings** → **Networking** → **Generate Domain**.
+5. **Settings** → **Service**:
+   - **Root Directory**: leave **empty** (monorepo root). Do **not** use `/apps/web` – web needs `packages/*`.
+   - Build/Start use nixpacks.toml (no overrides needed when `DEPLOY_TARGET=web`).
+6. **Settings** → **Networking** → **Generate Domain**.
 
 ## 8. Update Mobile App
 
@@ -97,4 +97,5 @@ Rebuild/restart the Expo app so it uses the new API URL.
 - **DB connection fails**: Verify `DATABASE_URL` is linked from Postgres. Railway Postgres uses SSL; Prisma handles it.
 - **502 Bad Gateway**: Check logs. Often the app crashes on startup (e.g. missing env vars).
 - **FATAL: In production, set JWT_ACCESS_SECRET...**: Add `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` in Railway Variables. Generate with `openssl rand -base64 32`.
-- **Web build fails / wrong branch**: Ensure branch is `axion-v2-clean`, Root Directory is empty, and Build Command is `npm ci && npm run build:web`.
+- **Web build fails / wrong branch**: Ensure branch is `axion-v2-clean`, Root Directory is empty, and `DEPLOY_TARGET=web` is set for the Web service.
+- **Web runs build:api**: Set `DEPLOY_TARGET=web` in the Web service Variables.
